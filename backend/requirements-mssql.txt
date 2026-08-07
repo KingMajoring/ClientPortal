@@ -1,0 +1,4 @@
+# Extra dependency needed only when SQLALCHEMY_DATABASE_URI points at Azure SQL /
+# SQL Server (mssql+pyodbc://...). Requires the unixODBC + msodbcsql system driver
+# to be installed separately. Not needed for local dev against SQLite.
+pyodbc==5.1.0

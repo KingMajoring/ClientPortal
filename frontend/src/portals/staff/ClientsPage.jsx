@@ -1,0 +1,134 @@
+import { useEffect, useState } from "react";
+import { api } from "../../shared/api/client";
+
+export function ClientsPage() {
+  const [clients, setClients] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState(null);
+
+  function reload() {
+    api.get("/staff/clients").then(setClients).catch((err) => setError(err.message));
+  }
+
+  useEffect(reload, []);
+
+  return (
+    <div>
+      <h2>Client companies</h2>
+      {error && <p className="form-error">{error}</p>}
+      <OnboardClientForm onOnboarded={reload} />
+
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Colour</th>
+            <th>SLA targets</th>
+            <th>Service types</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {clients.map((c) => (
+            <tr key={c.id}>
+              <td>{c.name}</td>
+              <td>
+                <span className="color-swatch" style={{ background: c.primary_color }} /> {c.primary_color}
+              </td>
+              <td>{Object.entries(c.sla_targets).map(([k, v]) => `${k}: ${v}h`).join(", ") || "Not set"}</td>
+              <td>{c.service_types.map((s) => s.name).join(", ") || "None"}</td>
+              <td>
+                <button onClick={() => setSelected(c)}>Configure</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {selected && <ClientConfigPanel client={selected} onSaved={() => { reload(); setSelected(null); }} />}
+    </div>
+  );
+}
+
+function OnboardClientForm({ onOnboarded }) {
+  const [form, setForm] = useState({ name: "", primary_color: "#0B5FFF", admin_email: "", admin_first_name: "", admin_last_name: "" });
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  function set(field) {
+    return (e) => setForm({ ...form, [field]: e.target.value });
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    try {
+      const res = await api.post("/staff/clients", form);
+      setResult(res);
+      onOnboarded();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <form className="onboard-form" onSubmit={submit}>
+      <h3>Onboard a new client</h3>
+      <input placeholder="Company name" value={form.name} onChange={set("name")} required />
+      <input type="color" value={form.primary_color} onChange={set("primary_color")} />
+      <input placeholder="Admin email" type="email" value={form.admin_email} onChange={set("admin_email")} required />
+      <input placeholder="Admin first name" value={form.admin_first_name} onChange={set("admin_first_name")} required />
+      <input placeholder="Admin last name" value={form.admin_last_name} onChange={set("admin_last_name")} required />
+      <button type="submit">Onboard client</button>
+      {error && <p className="form-error">{error}</p>}
+      {result && (
+        <p className="form-success">
+          Created {result.client_company.name}. Temp password for {result.admin_user.email}: <code>{result.temp_password}</code>
+        </p>
+      )}
+    </form>
+  );
+}
+
+function ClientConfigPanel({ client, onSaved }) {
+  const [targets, setTargets] = useState(client.sla_targets);
+  const [serviceTypeNames, setServiceTypeNames] = useState(client.service_types.map((s) => s.name).join(", "));
+
+  async function saveTargets() {
+    await api.put(`/staff/clients/${client.id}/sla-targets`, { targets });
+    onSaved();
+  }
+
+  async function saveServiceTypes() {
+    const names = serviceTypeNames.split(",").map((n) => n.trim()).filter(Boolean);
+    await api.put(`/staff/clients/${client.id}/service-types`, { names });
+    onSaved();
+  }
+
+  return (
+    <div className="client-config-panel">
+      <h3>Configure {client.name}</h3>
+
+      <div>
+        <h4>SLA targets (hours)</h4>
+        {["time_to_quote", "time_to_attend", "time_to_complete"].map((key) => (
+          <label key={key}>
+            {key.replace(/_/g, " ")}
+            <input
+              type="number"
+              value={targets[key] || ""}
+              onChange={(e) => setTargets({ ...targets, [key]: parseFloat(e.target.value) })}
+            />
+          </label>
+        ))}
+        <button onClick={saveTargets}>Save SLA targets</button>
+      </div>
+
+      <div>
+        <h4>Service types (comma-separated)</h4>
+        <input value={serviceTypeNames} onChange={(e) => setServiceTypeNames(e.target.value)} />
+        <button onClick={saveServiceTypes}>Save service types</button>
+      </div>
+    </div>
+  );
+}
