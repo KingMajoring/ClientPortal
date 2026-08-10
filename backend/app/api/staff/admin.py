@@ -175,9 +175,13 @@ def create_wgtk_user():
     else:
         if not payload.get("client_company_id"):
             raise ValidationError("client_company_id is required for a client role")
+        try:
+            client_company_id = int(payload["client_company_id"])
+        except (TypeError, ValueError):
+            raise ValidationError("client_company_id must be an integer")
         user, temp_password = user_service.create_client_user(
             current_user,
-            payload["client_company_id"],
+            client_company_id,
             payload["email"],
             payload["first_name"],
             payload["last_name"],
