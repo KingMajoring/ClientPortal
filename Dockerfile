@@ -9,7 +9,11 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- Stage 2: backend runtime ----
-FROM python:3.11-slim AS backend
+# Pinned to bookworm explicitly: "python:3.11-slim" floats to whatever Debian
+# release is currently "slim" upstream, which moved to trixie (13) while
+# Microsoft's ODBC driver repo below is still bookworm (12)-only. Floating
+# tags + a hardcoded distro-versioned URL don't mix — pin both sides.
+FROM python:3.11-slim-bookworm AS backend
 
 # msodbcsql18 + unixodbc: Azure App Service's built-in Python runtime does
 # NOT ship these (confirmed not baked in as of this image), and anything
@@ -19,9 +23,9 @@ FROM python:3.11-slim AS backend
 # code-based App Service.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl gnupg apt-transport-https ca-certificates gcc g++ \
-    && curl -sSL -o /tmp/ms.asc https://packages.microsoft.com/keys/microsoft.asc \
+    && curl -fsSL -o /tmp/ms.asc https://packages.microsoft.com/keys/microsoft.asc \
     && gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg /tmp/ms.asc \
-    && curl -sSL https://packages.microsoft.com/config/debian/12/prod.list -o /etc/apt/sources.list.d/mssql-release.list \
+    && curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list -o /etc/apt/sources.list.d/mssql-release.list \
     && sed -i 's|deb |deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] |' /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev
