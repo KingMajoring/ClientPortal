@@ -16,6 +16,9 @@ backend/.env
 frontend/node_modules/
 frontend/dist/
 
+# Built frontend copied in at container-build time (see Dockerfile)
+backend/app/static_frontend/
+
 # Editor
 .vscode/
 .idea/

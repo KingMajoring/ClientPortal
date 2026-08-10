@@ -1,17 +1,29 @@
 import os
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import CONFIG_BY_NAME
 from app.extensions import bcrypt, db, login_manager, migrate
 from app.utils.errors import ApiError
+
+# Built React app, copied in here at container-build time (see Dockerfile).
+# In dev this directory doesn't exist — Vite serves the frontend separately
+# on :5173 instead, so create_app() falls back to CORS for that case.
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "static_frontend")
 
 
 def create_app(config_name=None):
     config_name = config_name or os.environ.get("FLASK_ENV", "development")
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(CONFIG_BY_NAME[config_name])
+
+    # App Service sits behind a reverse proxy that terminates TLS and sets
+    # X-Forwarded-* headers; without this Flask thinks every request is
+    # plain HTTP and secure cookies never get set.
+    if config_name == "production":
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     os.makedirs(app.instance_path, exist_ok=True)
     os.makedirs(app.config["UPLOAD_ROOT"], exist_ok=True)
@@ -53,5 +65,23 @@ def create_app(config_name=None):
     @app.get("/api/health")
     def health():
         return {"status": "ok"}
+
+    if os.path.isdir(FRONTEND_DIST):
+        # Single-origin production deploy: Flask serves the built React app
+        # directly, so there's no cross-site cookie/CORS story to get right.
+        # This route is registered last, after every /api/* blueprint route,
+        # but Werkzeug still matches it for an *unmatched* /api/... path (a
+        # typo'd or removed endpoint) since <path:path> has no concept of
+        # "already tried the api blueprints" — without the explicit guard
+        # below, that 404 would silently become a 200 HTML page instead.
+        @app.route("/", defaults={"path": ""})
+        @app.route("/<path:path>")
+        def serve_frontend(path):
+            if path.startswith("api/"):
+                return jsonify({"error": "Not found"}), 404
+            candidate = os.path.join(FRONTEND_DIST, path) if path else None
+            if candidate and os.path.isfile(candidate):
+                return send_from_directory(FRONTEND_DIST, path)
+            return send_from_directory(FRONTEND_DIST, "index.html")
 
     return app

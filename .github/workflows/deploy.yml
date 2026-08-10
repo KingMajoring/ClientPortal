@@ -1,0 +1,53 @@
+name: Deploy to Azure
+
+# Runs on push to main (the intended production branch) or manually via the
+# Actions tab — use workflow_dispatch to test a deploy before this branch is
+# merged. No Azure credentials live in this file: AZURE_CLIENT_ID/
+# AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID are GitHub secrets pointing at an
+# OIDC federated credential, so nothing long-lived is stored anywhere.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required for OIDC login
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+  AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+  AZURE_ACR_NAME: ${{ secrets.AZURE_ACR_NAME }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image (cloud build via ACR Tasks)
+        run: |
+          az acr build \
+            --registry "$AZURE_ACR_NAME" \
+            --image "wgtk-portal:${{ github.sha }}" \
+            --image "wgtk-portal:latest" \
+            .
+
+      - name: Point the Web App at the new image
+        run: |
+          ACR_LOGIN_SERVER=$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)
+          az webapp config container set \
+            --name "$AZURE_WEBAPP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --container-image-name "$ACR_LOGIN_SERVER/wgtk-portal:${{ github.sha }}"
+
+      - name: Restart Web App
+        run: |
+          az webapp restart --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP"

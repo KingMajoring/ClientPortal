@@ -60,6 +60,14 @@ npm run dev                # http://localhost:5173, proxies /api to :5000
 Visit `http://localhost:5173/` for a landing page linking to both logins, or
 go straight to `/staff/login` or `/portal/login`.
 
+## Deploying to Azure
+
+See `docs/DEPLOYMENT.md` for the full runbook — one Azure App Service
+(container) serving both the API and the built frontend, Azure SQL Database,
+and a GitHub Actions workflow (`.github/workflows/deploy.yml`) that deploys
+on push to `main` via OIDC, so no Azure credential is ever stored as a
+GitHub secret. Provisioning is `infra/main.bicep`, run once by hand.
+
 ## Layout
 
 ```
@@ -81,6 +89,9 @@ frontend/src/
 ## What's deliberately not here yet
 
 Orbit/Soter CRM integration, field-engineer accounts, real email/SMS
-delivery, MFA, client self-registration, and production hosting config are
-all out of scope for this phase — see the spec's "explicitly out of scope"
-list and `docs/DATA_MODEL.md` for where the seams are left for later.
+delivery, MFA, and client self-registration are all out of scope for this
+phase — see the spec's "explicitly out of scope" list and
+`docs/DATA_MODEL.md` for where the seams are left for later. Azure hosting
+is now scaffolded (`docs/DEPLOYMENT.md`) but still has known gaps — single
+instance, SQL-auth rather than managed-identity auth to the database, and no
+scheduled trigger for ETA-expiry — listed at the bottom of that doc.

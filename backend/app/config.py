@@ -39,9 +39,17 @@ class TestConfig(BaseConfig):
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
-    # Expected form for Azure SQL: mssql+pyodbc://<user>:<pass>@<server>/<db>?driver=ODBC+Driver+18+for+SQL+Server
-    # Requires backend/requirements-mssql.txt installed on the target host.
+    # Expected form for Azure SQL: mssql+pyodbc://<user>:<pass>@<server>.database.windows.net:1433/<db>
+    #   ?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no
+    # Requires backend/requirements-mssql.txt + the msodbcsql18 driver on the
+    # host — see the Dockerfile, which installs both for exactly this reason.
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
+
+    # Served over HTTPS behind App Service's proxy (see ProxyFix in
+    # create_app) — cookies should never go out in the clear.
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    PREFERRED_URL_SCHEME = "https"
 
 
 CONFIG_BY_NAME = {
