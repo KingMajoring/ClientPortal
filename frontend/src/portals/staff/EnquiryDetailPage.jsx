@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../shared/api/client";
+import { Icon } from "../../shared/components/Icon";
+import { StatusBadge } from "../../shared/components/StatusBadge";
 
 export function EnquiryDetailPage() {
   const { id } = useParams();
@@ -27,22 +29,31 @@ export function EnquiryDetailPage() {
     }
   }
 
-  if (!enquiry) return <p>{error || "Loading..."}</p>;
+  if (!enquiry) return <p className="page-loading">{error || "Loading..."}</p>;
 
   return (
-    <div className="enquiry-detail">
-      <h2>
-        {enquiry.reference} &mdash; {enquiry.client_company_name}
-      </h2>
-      <p>
-        Status: <strong>{enquiry.status.replace(/_/g, " ")}</strong>
-        {enquiry.is_eta_expired && <span className="badge-alert"> ETA EXPIRED</span>}
-      </p>
+    <div>
+      <div className="page-header">
+        <Link to="/staff/enquiries" className="breadcrumb">
+          <Icon name="chevronLeft" size={16} />
+          Back to enquiries
+        </Link>
+        <div className="page-header-row">
+          <div>
+            <h2>
+              {enquiry.reference} — {enquiry.client_company_name}
+            </h2>
+            <p className="subtitle">
+              <StatusBadge status={enquiry.status} />
+              {enquiry.is_eta_expired && <span className="badge badge-red" style={{ marginLeft: "0.5rem" }}>ETA expired</span>}
+            </p>
+          </div>
+        </div>
+      </div>
       {error && <p className="form-error">{error}</p>}
 
-      <section>
-        <h3>Details</h3>
-        <dl>
+      <CardSection icon="doc" title="Details">
+        <dl className="detail-grid">
           <dt>Vehicle</dt>
           <dd>{enquiry.vehicle_registration} {enquiry.vehicle_make_model}</dd>
           <dt>Location</dt>
@@ -50,28 +61,29 @@ export function EnquiryDetailPage() {
           <dt>Urgency</dt>
           <dd>{enquiry.urgency}</dd>
         </dl>
-      </section>
+      </CardSection>
 
       <ActionPanel enquiry={enquiry} act={act} />
 
-      <section>
-        <h3>Job notes</h3>
+      <CardSection icon="file" title="Job notes">
         <NoteForm onSubmit={(note_text, visibility) => act("notes", { note_text, visibility })} />
-        <ul>
+        <ul className="plain-list">
           {notes.map((n) => (
             <li key={n.id}>
-              <strong>[{n.visibility === "INTERNAL" ? "Internal" : "Client-visible"}]</strong> {n.note_text}
+              <span className={`badge ${n.visibility === "INTERNAL" ? "badge-gray" : "badge-blue"}`}>
+                {n.visibility === "INTERNAL" ? "Internal" : "Client-visible"}
+              </span>{" "}
+              {n.note_text}
               <br />
               <small>{n.author_name} &middot; {new Date(n.created_at).toLocaleString()}</small>
             </li>
           ))}
         </ul>
-      </section>
+      </CardSection>
 
-      <section>
-        <h3>Documents</h3>
+      <CardSection icon="building" title="Documents">
         <DocumentUploadForm enquiryId={id} onUploaded={reload} />
-        <ul>
+        <ul className="plain-list">
           {documents.map((d) => (
             <li key={d.id}>
               <a href={d.download_url}>{d.original_filename}</a> ({d.document_type}, {d.visibility})
@@ -79,11 +91,10 @@ export function EnquiryDetailPage() {
             </li>
           ))}
         </ul>
-      </section>
+      </CardSection>
 
-      <section>
-        <h3>Status history</h3>
-        <ul>
+      <CardSection icon="chart" title="Status history">
+        <ul className="plain-list">
           {enquiry.status_history.map((h) => (
             <li key={h.id}>
               {h.from_status || "—"} &rarr; {h.to_status} by {h.changed_by_name} at{" "}
@@ -92,8 +103,24 @@ export function EnquiryDetailPage() {
             </li>
           ))}
         </ul>
-      </section>
+      </CardSection>
     </div>
+  );
+}
+
+function CardSection({ icon, title, children }) {
+  return (
+    <section className="card">
+      <div className="card-header">
+        <div className="card-header-title">
+          <div className="icon-badge">
+            <Icon name={icon} size={16} />
+          </div>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -106,29 +133,34 @@ function ActionPanel({ enquiry, act }) {
   const [declineReason, setDeclineReason] = useState("");
   const [completionNotes, setCompletionNotes] = useState("");
 
-  return (
-    <section className="action-panel">
-      <h3>Actions</h3>
+  const hasActions =
+    ["NEW", "ETA_EXPIRED"].includes(enquiry.status) ||
+    enquiry.status === "ACCEPTED" ||
+    ["SCHEDULED", "ETA_EXPIRED"].includes(enquiry.status);
 
+  if (!hasActions) return null;
+
+  return (
+    <CardSection icon="check" title="Actions">
       {(enquiry.status === "NEW" || enquiry.status === "ETA_EXPIRED") && (
         <div className="action-row">
-          <h4>Send quote</h4>
+          <h4 className="section-title">Send quote</h4>
           <input type="date" value={etaDate} onChange={(e) => setEtaDate(e.target.value)} />
-          <label>
-            <input type="checkbox" checked={etaSameDay} onChange={(e) => setEtaSameDay(e.target.checked)} /> Same day
+          <label style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem" }}>
+            <input type="checkbox" checked={etaSameDay} onChange={(e) => setEtaSameDay(e.target.checked)} style={{ width: "auto" }} /> Same day
           </label>
           <input type="number" step="0.01" placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
           <button onClick={() => act("quote", { eta_date: etaDate, eta_is_same_day: etaSameDay, price })}>
             Send quote
           </button>
           <input placeholder="Decline reason" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)} />
-          <button onClick={() => act("decline", { reason_text: declineReason })}>Decline</button>
+          <button className="btn-danger" onClick={() => act("decline", { reason_text: declineReason })}>Decline</button>
         </div>
       )}
 
       {enquiry.status === "ACCEPTED" && (
         <div className="action-row">
-          <h4>Set appointment time</h4>
+          <h4 className="section-title">Set appointment time</h4>
           <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
           <button onClick={() => act("schedule", { scheduled_at: scheduledAt })}>Send appointment time</button>
         </div>
@@ -136,7 +168,7 @@ function ActionPanel({ enquiry, act }) {
 
       {(enquiry.status === "SCHEDULED" || enquiry.status === "ETA_EXPIRED") && (
         <div className="action-row">
-          <h4>Reschedule</h4>
+          <h4 className="section-title">Reschedule</h4>
           <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
           <input placeholder="Reason (required)" value={rescheduleReason} onChange={(e) => setRescheduleReason(e.target.value)} />
           <button onClick={() => act("reschedule", { scheduled_at: scheduledAt, reason: rescheduleReason })}>
@@ -147,7 +179,7 @@ function ActionPanel({ enquiry, act }) {
 
       {(enquiry.status === "SCHEDULED" || enquiry.status === "ETA_EXPIRED") && (
         <div className="action-row">
-          <h4>Mark complete</h4>
+          <h4 className="section-title">Mark complete</h4>
           <textarea
             placeholder="Completion notes"
             value={completionNotes}
@@ -156,7 +188,7 @@ function ActionPanel({ enquiry, act }) {
           <button onClick={() => act("complete", { completion_notes: completionNotes })}>Mark complete</button>
         </div>
       )}
-    </section>
+    </CardSection>
   );
 }
 

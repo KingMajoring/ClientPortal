@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../shared/api/client";
+import { Icon } from "../../shared/components/Icon";
 
 export function CompanyPage() {
   const [users, setUsers] = useState([]);
@@ -48,24 +49,40 @@ export function CompanyPage() {
 
   return (
     <div>
-      <h2>Company settings</h2>
+      <div className="page-header">
+        <h2>Company settings</h2>
+        <p className="subtitle">Manage your team and what standard users can see.</p>
+      </div>
 
-      <section>
-        <h3>Feature visibility for standard users</h3>
-        <ul className="feature-flags">
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="settings" size={16} />
+            </div>
+            <h3>Feature visibility for standard users</h3>
+          </div>
+        </div>
+        <div className="action-row">
           {Object.entries(flags).map(([key, enabled]) => (
-            <li key={key}>
-              <label>
-                <input type="checkbox" checked={enabled} onChange={() => toggleFlag(key)} />
-                {key.replace(/_/g, " ")}
-              </label>
-            </li>
+            <label key={key} className={`toggle-chip ${enabled ? "checked" : ""}`}>
+              <input type="checkbox" checked={enabled} onChange={() => toggleFlag(key)} />
+              <Icon name={enabled ? "check" : "x"} size={14} />
+              {key.replace(/_/g, " ")}
+            </label>
           ))}
-        </ul>
+        </div>
       </section>
 
-      <section>
-        <h3>Users</h3>
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="users" size={16} />
+            </div>
+            <h3>Users</h3>
+          </div>
+        </div>
         <form onSubmit={submit} className="onboard-form">
           <input placeholder="Email" type="email" value={form.email} onChange={set("email")} required />
           <input placeholder="First name" value={form.first_name} onChange={set("first_name")} required />
@@ -78,7 +95,9 @@ export function CompanyPage() {
         </form>
         {error && <p className="form-error">{error}</p>}
         {tempPassword && <p className="form-success">Temp password: <code>{tempPassword}</code></p>}
+      </section>
 
+      <div className="table-wrap">
         <table>
           <thead>
             <tr>
@@ -91,18 +110,18 @@ export function CompanyPage() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
-                <td>{u.first_name} {u.last_name}</td>
+                <td style={{ fontWeight: 600 }}>{u.first_name} {u.last_name}</td>
                 <td>{u.email}</td>
-                <td>{u.role}</td>
-                <td>
-                  <button onClick={() => resetPassword(u.id)}>Reset password</button>
-                  <button onClick={() => removeUser(u.id)}>Remove</button>
+                <td><span className={`badge ${u.role === "CLIENT_ADMIN" ? "badge-blue" : "badge-gray"}`}>{u.role === "CLIENT_ADMIN" ? "Admin" : "Standard"}</span></td>
+                <td className="action-row" style={{ margin: 0 }}>
+                  <button className="btn-secondary" onClick={() => resetPassword(u.id)}>Reset password</button>
+                  <button className="btn-danger" onClick={() => removeUser(u.id)}>Remove</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </section>
+      </div>
     </div>
   );
 }

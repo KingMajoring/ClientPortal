@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { Icon } from "../components/Icon";
 
 const METRIC_LABELS = {
   time_to_quote: "Time to quote",
@@ -32,7 +33,7 @@ export function Dashboard({ clients, canExport }) {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-filters">
+      <div className="list-filters">
         {clients && (
           <select value={clientCompanyId} onChange={(e) => setClientCompanyId(e.target.value)}>
             <option value="">All clients</option>
@@ -43,75 +44,97 @@ export function Dashboard({ clients, canExport }) {
             ))}
           </select>
         )}
-        <label>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem" }}>
           From <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         </label>
-        <label>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem" }}>
           To <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </label>
         {canExport && (
           <a
-            className="button"
+            className="button btn-secondary"
             href={`/api/staff/enquiries/export.csv${clientCompanyId ? `?client_company_id=${clientCompanyId}` : ""}`}
           >
+            <Icon name="file" size={16} />
             Export CSV
           </a>
         )}
       </div>
 
       {error && <p className="form-error">{error}</p>}
-      {!data && !error && <p>Loading dashboard...</p>}
+      {!data && !error && <p className="page-loading">Loading dashboard...</p>}
 
       {data && (
         <>
-          <section>
-            <h3>SLA compliance</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Metric</th>
-                  <th>Target (hrs)</th>
-                  <th>Average (hrs)</th>
-                  <th>Sample</th>
-                  <th>Breaches</th>
-                  <th>Compliance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(data.sla_compliance).map(([key, row]) => (
-                  <tr key={key}>
-                    <td>{METRIC_LABELS[key] || key}</td>
-                    <td>{row.target_hours ?? "-"}</td>
-                    <td>{row.average_hours ?? "-"}</td>
-                    <td>{row.sample_size}</td>
-                    <td>{row.breaches}</td>
-                    <td>{row.compliance_rate != null ? `${Math.round(row.compliance_rate * 100)}%` : "-"}</td>
+          <div className="stat-row" style={{ marginBottom: "1.25rem" }}>
+            <div className="stat-tile">
+              <div className="stat-value">{data.mi.total}</div>
+              <div className="stat-label">Total enquiries</div>
+            </div>
+            <div className="stat-tile">
+              <div className="stat-value" style={{ color: data.mi.eta_expired_count > 0 ? "var(--danger)" : undefined }}>
+                {data.mi.eta_expired_count}
+              </div>
+              <div className="stat-label">ETA expired</div>
+            </div>
+            {Object.entries(data.mi.counts_by_status).map(([status, count]) => (
+              <div className="stat-tile" key={status}>
+                <div className="stat-value">{count}</div>
+                <div className="stat-label">{status.replace(/_/g, " ")}</div>
+              </div>
+            ))}
+          </div>
+
+          <section className="card">
+            <div className="card-header">
+              <div className="card-header-title">
+                <div className="icon-badge">
+                  <Icon name="chart" size={16} />
+                </div>
+                <h3>SLA compliance</h3>
+              </div>
+            </div>
+            <div className="table-wrap" style={{ boxShadow: "none", marginBottom: 0 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Target (hrs)</th>
+                    <th>Average (hrs)</th>
+                    <th>Sample</th>
+                    <th>Breaches</th>
+                    <th>Compliance</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {Object.entries(data.sla_compliance).map(([key, row]) => (
+                    <tr key={key}>
+                      <td style={{ fontWeight: 600 }}>{METRIC_LABELS[key] || key}</td>
+                      <td>{row.target_hours ?? "-"}</td>
+                      <td>{row.average_hours ?? "-"}</td>
+                      <td>{row.sample_size}</td>
+                      <td>{row.breaches}</td>
+                      <td>{row.compliance_rate != null ? `${Math.round(row.compliance_rate * 100)}%` : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
-          <section>
-            <h3>Job counts by status</h3>
-            <ul className="status-counts">
-              {Object.entries(data.mi.counts_by_status).map(([status, count]) => (
-                <li key={status}>
-                  <strong>{count}</strong> {status.replace(/_/g, " ")}
-                </li>
-              ))}
-            </ul>
-            <p>
-              Total: {data.mi.total} &middot; ETA expired: {data.mi.eta_expired_count}
-            </p>
-          </section>
-
-          <section>
-            <h3>Volume over time</h3>
+          <section className="card">
+            <div className="card-header">
+              <div className="card-header-title">
+                <div className="icon-badge">
+                  <Icon name="inbox" size={16} />
+                </div>
+                <h3>Volume over time</h3>
+              </div>
+            </div>
             <ul className="volume-list">
               {Object.entries(data.mi.volume_by_day).map(([day, count]) => (
                 <li key={day}>
-                  {day}: {count}
+                  {day}: <strong>{count}</strong>
                 </li>
               ))}
             </ul>

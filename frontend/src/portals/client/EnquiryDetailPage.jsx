@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../shared/api/client";
+import { Icon } from "../../shared/components/Icon";
+import { StatusBadge } from "../../shared/components/StatusBadge";
 
 export function ClientEnquiryDetailPage() {
   const { id } = useParams();
@@ -47,20 +49,38 @@ export function ClientEnquiryDetailPage() {
     reload();
   }
 
-  if (!enquiry) return <p>{error || "Loading..."}</p>;
+  if (!enquiry) return <p className="page-loading">{error || "Loading..."}</p>;
 
   const loaDoc = documents.find((d) => d.document_type === "LETTER_OF_AUTHORITY");
 
   return (
-    <div className="enquiry-detail">
-      <h2>{enquiry.reference}</h2>
-      <p>
-        Status: <strong>{enquiry.status.replace(/_/g, " ")}</strong>
-      </p>
+    <div>
+      <div className="page-header">
+        <Link to="/portal/enquiries" className="breadcrumb">
+          <Icon name="chevronLeft" size={16} />
+          Back to my enquiries
+        </Link>
+        <div className="page-header-row">
+          <div>
+            <h2>{enquiry.reference}</h2>
+            <p className="subtitle">
+              <StatusBadge status={enquiry.status} />
+            </p>
+          </div>
+        </div>
+      </div>
       {error && <p className="form-error">{error}</p>}
 
-      <section>
-        <dl>
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="doc" size={16} />
+            </div>
+            <h3>Details</h3>
+          </div>
+        </div>
+        <dl className="detail-grid">
           <dt>Vehicle</dt>
           <dd>{enquiry.vehicle_registration} {enquiry.vehicle_make_model}</dd>
           <dt>Location</dt>
@@ -87,10 +107,17 @@ export function ClientEnquiryDetailPage() {
       </section>
 
       {enquiry.status === "QUOTED" && (
-        <section className="action-panel">
-          <h3>Respond to quote</h3>
+        <section className="card">
+          <div className="card-header">
+            <div className="card-header-title">
+              <div className="icon-badge">
+                <Icon name="check" size={16} />
+              </div>
+              <h3>Respond to quote</h3>
+            </div>
+          </div>
           <button onClick={accept}>Accept quote</button>
-          <div className="action-row">
+          <div className="action-row" style={{ marginTop: "1rem" }}>
             <select value={declineReasonType} onChange={(e) => setDeclineReasonType(e.target.value)}>
               <option value="PRICE">Decline: Price</option>
               <option value="ETA">Decline: ETA</option>
@@ -101,16 +128,26 @@ export function ClientEnquiryDetailPage() {
               value={declineReasonText}
               onChange={(e) => setDeclineReasonText(e.target.value)}
             />
-            <button onClick={decline}>Decline quote</button>
+            <button className="btn-danger" onClick={decline}>Decline quote</button>
           </div>
         </section>
       )}
 
       {loaDoc && (
-        <section>
-          <h3>Letter of Authority</h3>
+        <section className="card">
+          <div className="card-header">
+            <div className="card-header-title">
+              <div className="icon-badge">
+                <Icon name="file" size={16} />
+              </div>
+              <h3>Letter of Authority</h3>
+            </div>
+            <span className={`badge ${loaDoc.status === "ACCEPTED" ? "badge-green" : "badge-amber"}`}>
+              {loaDoc.status === "ACCEPTED" ? "Accepted" : "Pending acceptance"}
+            </span>
+          </div>
           <p>
-            <a href={loaDoc.download_url}>{loaDoc.original_filename}</a> &mdash; {loaDoc.status}
+            <a href={loaDoc.download_url}>{loaDoc.original_filename}</a>
           </p>
           {loaDoc.status === "PENDING_ACCEPTANCE" && (
             <button onClick={() => acceptLoa(loaDoc.id)}>Digitally accept Letter of Authority</button>
@@ -119,34 +156,63 @@ export function ClientEnquiryDetailPage() {
       )}
 
       {enquiry.status === "ACCEPTED" && (
-        <section>
-          <h3>Upload required documents</h3>
+        <section className="card">
+          <div className="card-header">
+            <div className="card-header-title">
+              <div className="icon-badge">
+                <Icon name="plus" size={16} />
+              </div>
+              <h3>Upload required documents</h3>
+            </div>
+          </div>
           <DocumentUploadForm enquiryId={id} onUploaded={reload} />
         </section>
       )}
 
-      <section>
-        <h3>Documents</h3>
-        <ul>
-          {documents.map((d) => (
-            <li key={d.id}>
-              <a href={d.download_url}>{d.original_filename}</a> ({d.document_type})
-            </li>
-          ))}
-        </ul>
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="building" size={16} />
+            </div>
+            <h3>Documents</h3>
+          </div>
+        </div>
+        {documents.length === 0 ? (
+          <p style={{ color: "var(--text-tertiary)" }}>No documents yet.</p>
+        ) : (
+          <ul className="plain-list">
+            {documents.map((d) => (
+              <li key={d.id}>
+                <a href={d.download_url}>{d.original_filename}</a> ({d.document_type})
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
-      <section>
-        <h3>Job notes</h3>
-        <ul>
-          {notes.map((n) => (
-            <li key={n.id}>
-              {n.note_text}
-              <br />
-              <small>{new Date(n.created_at).toLocaleString()}</small>
-            </li>
-          ))}
-        </ul>
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="inbox" size={16} />
+            </div>
+            <h3>Job notes</h3>
+          </div>
+        </div>
+        {notes.length === 0 ? (
+          <p style={{ color: "var(--text-tertiary)" }}>No notes yet.</p>
+        ) : (
+          <ul className="plain-list">
+            {notes.map((n) => (
+              <li key={n.id}>
+                {n.note_text}
+                <br />
+                <small>{new Date(n.created_at).toLocaleString()}</small>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

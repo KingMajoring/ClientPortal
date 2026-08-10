@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../shared/api/client";
+import { Icon } from "../../shared/components/Icon";
 
 export function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -41,45 +42,61 @@ export function UsersPage() {
 
   return (
     <div>
-      <h2>WGTK staff users</h2>
-      <form onSubmit={submit} className="onboard-form">
-        <input placeholder="Email" type="email" value={form.email} onChange={set("email")} required />
-        <input placeholder="First name" value={form.first_name} onChange={set("first_name")} required />
-        <input placeholder="Last name" value={form.last_name} onChange={set("last_name")} required />
-        <select value={form.role} onChange={set("role")}>
-          <option value="WGTK_GENERAL">WGTK General</option>
-          <option value="WGTK_ADMIN">WGTK Admin</option>
-        </select>
-        <button type="submit">Add staff user</button>
-      </form>
-      {error && <p className="form-error">{error}</p>}
-      {tempPassword && <p className="form-success">Temp password: <code>{tempPassword}</code></p>}
+      <div className="page-header">
+        <h2>WGTK staff users</h2>
+        <p className="subtitle">Add and manage WGTK Admin and General staff accounts.</p>
+      </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Active</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td>{u.first_name} {u.last_name}</td>
-              <td>{u.email}</td>
-              <td>{u.role}</td>
-              <td>{u.is_active ? "Yes" : "No"}</td>
-              <td>
-                <button onClick={() => resetPassword(u.id)}>Reset password</button>
-                <button onClick={() => removeUser(u.id)}>Remove</button>
-              </td>
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="plus" size={16} />
+            </div>
+            <h3>Add staff user</h3>
+          </div>
+        </div>
+        <form onSubmit={submit} className="onboard-form">
+          <input placeholder="Email" type="email" value={form.email} onChange={set("email")} required />
+          <input placeholder="First name" value={form.first_name} onChange={set("first_name")} required />
+          <input placeholder="Last name" value={form.last_name} onChange={set("last_name")} required />
+          <select value={form.role} onChange={set("role")}>
+            <option value="WGTK_GENERAL">WGTK General</option>
+            <option value="WGTK_ADMIN">WGTK Admin</option>
+          </select>
+          <button type="submit">Add staff user</button>
+        </form>
+        {error && <p className="form-error">{error}</p>}
+        {tempPassword && <p className="form-success">Temp password: <code>{tempPassword}</code></p>}
+      </section>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Active</th>
+              <th></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.id}>
+                <td style={{ fontWeight: 600 }}>{u.first_name} {u.last_name}</td>
+                <td>{u.email}</td>
+                <td><span className={`badge ${u.role === "WGTK_ADMIN" ? "badge-blue" : "badge-gray"}`}>{u.role.replace("WGTK_", "")}</span></td>
+                <td>{u.is_active ? <span className="badge badge-green">Active</span> : <span className="badge badge-gray">Inactive</span>}</td>
+                <td className="action-row" style={{ margin: 0 }}>
+                  <button className="btn-secondary" onClick={() => resetPassword(u.id)}>Reset password</button>
+                  <button className="btn-danger" onClick={() => removeUser(u.id)}>Remove</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

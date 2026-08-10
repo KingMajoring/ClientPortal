@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/client";
+import { Icon } from "../../shared/components/Icon";
 
 export function RaiseEnquiryPage() {
   const [config, setConfig] = useState(null);
@@ -27,33 +28,48 @@ export function RaiseEnquiryPage() {
     }
   }
 
-  if (!config) return <p>{error || "Loading form..."}</p>;
+  if (!config) return <p className="page-loading">{error || "Loading form..."}</p>;
 
   return (
     <div>
-      <h2>Raise a new enquiry</h2>
-      <form onSubmit={submit} className="dynamic-form">
-        {config.service_types.length > 0 && (
-          <label>
-            Service type
-            <select onChange={(e) => setValue("service_type_id", e.target.value)}>
-              <option value="">Select...</option>
-              {config.service_types.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+      <div className="page-header">
+        <h2>Raise a new enquiry</h2>
+        <p className="subtitle">Tell us about the vehicle and job, and we'll come back with a quote.</p>
+      </div>
 
-        {config.fields.map((field) => (
-          <FormField key={field.field_key} field={field} onChange={(v) => setValue(field.field_key, v)} />
-        ))}
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="key" size={16} />
+            </div>
+            <h3>Vehicle & Job Information</h3>
+          </div>
+        </div>
 
-        {error && <p className="form-error">{error}</p>}
-        <button type="submit">Submit enquiry</button>
-      </form>
+        <form onSubmit={submit} className="dynamic-form">
+          {config.service_types.length > 0 && (
+            <label>
+              Service type
+              <select onChange={(e) => setValue("service_type_id", e.target.value)}>
+                <option value="">Select...</option>
+                {config.service_types.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {config.fields.map((field) => (
+            <FormField key={field.field_key} field={field} onChange={(v) => setValue(field.field_key, v)} />
+          ))}
+
+          {error && <p className="form-error">{error}</p>}
+          <button type="submit">Submit enquiry</button>
+        </form>
+      </section>
     </div>
   );
 }

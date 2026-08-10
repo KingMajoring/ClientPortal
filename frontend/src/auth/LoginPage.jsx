@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { Icon } from "../shared/components/Icon";
 import { useAuth } from "./AuthContext";
 
 export function LoginPage({ title, allowedRoles, homePath, otherPortalHint }) {
@@ -35,6 +36,9 @@ export function LoginPage({ title, allowedRoles, homePath, otherPortalHint }) {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        <div className="sidebar-brand-icon" style={{ width: 40, height: 40 }}>
+          <Icon name="key" size={20} />
+        </div>
         <h1>{title}</h1>
         <form onSubmit={handleSubmit}>
           <label>
@@ -46,7 +50,7 @@ export function LoginPage({ title, allowedRoles, homePath, otherPortalHint }) {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </label>
           {error && <p className="form-error">{error}</p>}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" className="btn-block" disabled={submitting}>
             {submitting ? "Signing in..." : "Sign in"}
           </button>
         </form>

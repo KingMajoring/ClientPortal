@@ -11,7 +11,10 @@ export function StaffDashboardPage() {
 
   return (
     <div>
-      <h2>SLA / MI dashboard</h2>
+      <div className="page-header">
+        <h2>SLA / MI dashboard</h2>
+        <p className="subtitle">SLA compliance and job volume across all clients.</p>
+      </div>
       <Dashboard clients={clients} canExport />
     </div>
   );
