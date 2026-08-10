@@ -5,6 +5,7 @@ reads) and fires the matching notification. Routes should never set
 """
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from app.extensions import db
@@ -15,6 +16,20 @@ from app.services import notification_service, pdf_service
 from app.services.tenant_scope import assert_tenant_match, scope_query_to_tenant
 from app.utils.errors import NotFoundError, ValidationError
 from app.utils.references import format_enquiry_reference
+
+logger = logging.getLogger("wgtk.enquiry")
+
+
+def _notify_safely(notify_fn, *args, **kwargs):
+    """Every notify_* call here runs after the state-changing commit has
+    already succeeded. A failure in here (email, a DB hiccup) must never
+    turn an action that already saved into what looks like a failed
+    request to the caller — log it and move on."""
+    try:
+        notify_fn(*args, **kwargs)
+    except Exception:
+        logger.exception("Notification failed: %s", notify_fn.__name__)
+
 
 FIXED_FIELD_KEYS = {
     "vehicle_registration",
@@ -104,7 +119,7 @@ def create_enquiry(current_user, client_company_id, data):
     _record_history(enquiry, None, EnquiryStatus.NEW, current_user)
     db.session.commit()
 
-    notification_service.notify_new_enquiry(enquiry)
+    _notify_safely(notification_service.notify_new_enquiry, enquiry)
     return enquiry
 
 
@@ -116,7 +131,7 @@ def send_quote(current_user, enquiry, eta_date, eta_is_same_day, price):
     enquiry.is_eta_expired = False
     _record_history(enquiry, enquiry.status, EnquiryStatus.QUOTED, current_user)
     db.session.commit()
-    notification_service.notify_quote_sent(enquiry)
+    _notify_safely(notification_service.notify_quote_sent, enquiry)
     return enquiry
 
 
@@ -138,7 +153,7 @@ def accept_quote(current_user, enquiry):
     db.session.add(loa)
     db.session.commit()
 
-    notification_service.notify_accepted(enquiry)
+    _notify_safely(notification_service.notify_accepted, enquiry)
     return enquiry
 
 
@@ -158,7 +173,7 @@ def decline_by_client(current_user, enquiry, reason_type: DeclineReasonType, rea
             enquiry, enquiry.status, EnquiryStatus.DECLINED_BY_CLIENT, current_user, reason=reason_text
         )
     db.session.commit()
-    notification_service.notify_declined(enquiry, declined_by="client")
+    _notify_safely(notification_service.notify_declined, enquiry, declined_by="client")
     return enquiry
 
 
@@ -169,7 +184,7 @@ def decline_by_wgtk(current_user, enquiry, reason_text):
     enquiry.wgtk_decline_reason_text = reason_text
     _record_history(enquiry, enquiry.status, EnquiryStatus.DECLINED_BY_WGTK, current_user, reason=reason_text)
     db.session.commit()
-    notification_service.notify_declined(enquiry, declined_by="wgtk")
+    _notify_safely(notification_service.notify_declined, enquiry, declined_by="wgtk")
     return enquiry
 
 
@@ -179,7 +194,7 @@ def schedule(current_user, enquiry, scheduled_at):
     enquiry.is_eta_expired = False
     _record_history(enquiry, enquiry.status, EnquiryStatus.SCHEDULED, current_user)
     db.session.commit()
-    notification_service.notify_appointment_set(enquiry)
+    _notify_safely(notification_service.notify_appointment_set, enquiry)
     return enquiry
 
 
@@ -191,7 +206,7 @@ def reschedule(current_user, enquiry, new_scheduled_at, reason):
     enquiry.is_eta_expired = False
     _record_history(enquiry, enquiry.status, EnquiryStatus.SCHEDULED, current_user, reason=reason)
     db.session.commit()
-    notification_service.notify_rescheduled(enquiry)
+    _notify_safely(notification_service.notify_rescheduled, enquiry)
     return enquiry
 
 
@@ -224,7 +239,7 @@ def check_and_flag_eta_expired(grace_hours):
 
     db.session.commit()
     for enquiry in flagged:
-        notification_service.notify_eta_expired(enquiry)
+        _notify_safely(notification_service.notify_eta_expired, enquiry)
     return flagged
 
 
@@ -241,7 +256,7 @@ def complete(current_user, enquiry, completion_notes):
             )
         )
     db.session.commit()
-    notification_service.notify_completed(enquiry)
+    _notify_safely(notification_service.notify_completed, enquiry)
     return enquiry
 
 
