@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { Icon } from "./Icon";
 
 export function NotificationsBell() {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const basePath = location.pathname.startsWith("/staff") ? "/staff" : "/portal";
 
   useEffect(() => {
     api.get("/shared/notifications").then(setNotifications).catch(() => {});
@@ -17,6 +21,12 @@ export function NotificationsBell() {
     setNotifications((prev) => prev.map((n) => (n.id === id ? updated : n)));
   }
 
+  function handleClick(n) {
+    if (!n.is_read) markRead(n.id);
+    setOpen(false);
+    if (n.enquiry_id) navigate(`${basePath}/enquiries/${n.enquiry_id}`);
+  }
+
   return (
     <div className="notifications-bell">
       <button className="btn-secondary" onClick={() => setOpen((v) => !v)}>
@@ -27,7 +37,12 @@ export function NotificationsBell() {
         <div className="notifications-dropdown">
           {notifications.length === 0 && <p style={{ padding: "0.9rem", color: "var(--text-tertiary)", margin: 0 }}>No notifications yet.</p>}
           {notifications.map((n) => (
-            <div key={n.id} className={`notification-row ${n.is_read ? "read" : "unread"}`} onClick={() => markRead(n.id)}>
+            <div
+              key={n.id}
+              className={`notification-row ${n.is_read ? "read" : "unread"}`}
+              style={{ cursor: n.enquiry_id ? "pointer" : "default" }}
+              onClick={() => handleClick(n)}
+            >
               <p style={{ margin: "0 0 0.2rem" }}>{n.message}</p>
               <span>{new Date(n.created_at).toLocaleString()}</span>
             </div>
