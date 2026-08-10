@@ -217,6 +217,26 @@ export function ClientEnquiryDetailPage() {
           </ul>
         )}
       </section>
+
+      <section className="card">
+        <div className="card-header">
+          <div className="card-header-title">
+            <div className="icon-badge">
+              <Icon name="chart" size={16} />
+            </div>
+            <h3>Status history</h3>
+          </div>
+        </div>
+        <ul className="plain-list">
+          {enquiry.status_history.map((h) => (
+            <li key={h.id}>
+              {h.from_status || "—"} &rarr; {h.to_status} by {h.changed_by_name} at{" "}
+              {new Date(h.created_at).toLocaleString()}
+              {h.reason && <em> ({h.reason})</em>}
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
