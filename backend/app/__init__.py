@@ -32,7 +32,14 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     bcrypt.init_app(app)
     login_manager.init_app(app)
-    login_manager.session_protection = "strong"
+    # "strong" ties the session to a remote-addr/user-agent fingerprint and
+    # force-logs-out on any mismatch between requests — behind Azure App
+    # Service's proxy layer that fingerprint isn't as stable as ProxyFix
+    # assumes, which manifested as "log in successfully, immediately treated
+    # as unauthenticated on the very next request." "basic" still marks the
+    # session non-fresh on a mismatch (good enough given HTTPS + secure
+    # cookies are already doing the real work) without force-logout.
+    login_manager.session_protection = "basic"
 
     # Frontend is a separate origin in dev (Vite on :5173); credentials are
     # required because auth is session-cookie based.
