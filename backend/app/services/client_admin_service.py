@@ -96,6 +96,32 @@ def upsert_form_field(client_company_id, field_key, label, field_type, is_requir
     return field
 
 
+def replace_form_fields(client_company_id, fields):
+    """Full replace: upserts everything in `fields` and deletes any existing
+    field whose key isn't in the new list, so the admin UI's "edit this
+    list, hit save" model doesn't leave orphaned fields behind."""
+    kept_keys = set()
+    for i, field in enumerate(fields):
+        upsert_form_field(
+            client_company_id,
+            field_key=field["field_key"],
+            label=field["label"],
+            field_type=field.get("field_type", "text"),
+            is_required=bool(field.get("is_required")),
+            sort_order=i,
+            options=field.get("options"),
+        )
+        kept_keys.add(field["field_key"])
+
+    stale = EnquiryFormField.query.filter(
+        EnquiryFormField.client_company_id == client_company_id,
+        ~EnquiryFormField.field_key.in_(kept_keys),
+    ).all()
+    for field in stale:
+        db.session.delete(field)
+    db.session.commit()
+
+
 def feature_flags_for(client_company_id):
     return {f.feature_key: f.is_enabled for f in ClientFeatureFlag.query.filter_by(client_company_id=client_company_id)}
 

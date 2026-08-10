@@ -1,3 +1,5 @@
+import json
+
 from flask import jsonify, request
 from flask_login import current_user, login_required
 
@@ -30,6 +32,7 @@ def serialize_client(company):
                 "field_type": f.field_type,
                 "is_required": f.is_required,
                 "is_active": f.is_active,
+                "options": json.loads(f.options_json) if f.options_json else None,
             }
             for f in company.form_fields
         ],
@@ -133,16 +136,10 @@ def set_service_types(client_id):
 @require_wgtk
 def set_form_fields(client_id):
     payload = request.get_json(silent=True) or {}
-    for i, field in enumerate(payload.get("fields", [])):
-        client_admin_service.upsert_form_field(
-            client_id,
-            field_key=field["field_key"],
-            label=field["label"],
-            field_type=field.get("field_type", "text"),
-            is_required=bool(field.get("is_required")),
-            sort_order=i,
-            options=field.get("options"),
-        )
+    for field in payload.get("fields", []):
+        if not field.get("field_key") or not field.get("label"):
+            raise ValidationError("Each field needs a key and a label")
+    client_admin_service.replace_form_fields(client_id, payload.get("fields", []))
     company = db.session.get(ClientCompany, client_id)
     return jsonify(serialize_client(company))
 
