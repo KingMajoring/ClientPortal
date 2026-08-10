@@ -36,6 +36,7 @@ class Enquiry(db.Model, TimestampMixin):
     # Fixed fields common across clients (also drive querying/reporting).
     vehicle_registration = db.Column(db.String(20), nullable=True)
     vehicle_make_model = db.Column(db.String(200), nullable=True)
+    vehicle_year = db.Column(db.String(10), nullable=True)
     location_address = db.Column(db.String(500), nullable=True)
     urgency = db.Column(db.String(50), nullable=True)
     on_site_contact_name = db.Column(db.String(200), nullable=True)

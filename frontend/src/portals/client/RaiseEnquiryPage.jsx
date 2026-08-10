@@ -18,11 +18,15 @@ export function RaiseEnquiryPage() {
   }
 
   function applyVehicleLookup(result) {
+    const configuredKeys = new Set(config.fields.map((f) => f.field_key));
     setValues((prev) => {
       const next = { ...prev };
       const makeModel = [result.make, result.model].filter(Boolean).join(" ");
-      if (makeModel && config.fields.some((f) => f.field_key === "vehicle_make_model")) {
+      if (makeModel && configuredKeys.has("vehicle_make_model")) {
         next.vehicle_make_model = makeModel;
+      }
+      if (result.year && configuredKeys.has("vehicle_year")) {
+        next.vehicle_year = result.year;
       }
       return next;
     });
@@ -141,7 +145,8 @@ function VehicleRegField({ field, value, onChange, onLookedUp }) {
       const result = await api.get(`/shared/vehicle-lookup/${encodeURIComponent(value.trim())}`);
       onLookedUp(result);
       const description = [result.make, result.model].filter(Boolean).join(" ") || "Vehicle";
-      setStatus({ kind: "success", message: `Found: ${description}` });
+      const withYear = result.year ? `${description} (${result.year})` : description;
+      setStatus({ kind: "success", message: `Found: ${withYear}` });
     } catch (err) {
       setStatus({ kind: "error", message: err.message });
     } finally {

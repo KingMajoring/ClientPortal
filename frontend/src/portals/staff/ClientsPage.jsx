@@ -5,6 +5,7 @@ import { Icon } from "../../shared/components/Icon";
 const STANDARD_FIELDS = [
   { field_key: "vehicle_registration", label: "Vehicle Registration", field_type: "text" },
   { field_key: "vehicle_make_model", label: "Make / Model", field_type: "text" },
+  { field_key: "vehicle_year", label: "Year", field_type: "text" },
   { field_key: "location_address", label: "Site Address", field_type: "textarea" },
   { field_key: "urgency", label: "Urgency", field_type: "select", options: ["Standard", "Urgent", "Same Day"] },
   { field_key: "on_site_contact_name", label: "On-site Contact", field_type: "text" },

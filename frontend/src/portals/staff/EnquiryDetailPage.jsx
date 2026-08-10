@@ -55,7 +55,10 @@ export function EnquiryDetailPage() {
       <CardSection icon="doc" title="Details">
         <dl className="detail-grid">
           <dt>Vehicle</dt>
-          <dd>{enquiry.vehicle_registration} {enquiry.vehicle_make_model}</dd>
+          <dd>
+            {enquiry.vehicle_registration} {enquiry.vehicle_make_model}
+            {enquiry.vehicle_year && ` (${enquiry.vehicle_year})`}
+          </dd>
           <dt>Location</dt>
           <dd>{enquiry.location_address}</dd>
           <dt>Urgency</dt>

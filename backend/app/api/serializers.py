@@ -13,6 +13,7 @@ def serialize_enquiry(enquiry):
         "status": enquiry.status.value,
         "vehicle_registration": enquiry.vehicle_registration,
         "vehicle_make_model": enquiry.vehicle_make_model,
+        "vehicle_year": enquiry.vehicle_year,
         "location_address": enquiry.location_address,
         "urgency": enquiry.urgency,
         "on_site_contact_name": enquiry.on_site_contact_name,

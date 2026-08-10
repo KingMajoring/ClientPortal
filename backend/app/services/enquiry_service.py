@@ -19,6 +19,7 @@ from app.utils.references import format_enquiry_reference
 FIXED_FIELD_KEYS = {
     "vehicle_registration",
     "vehicle_make_model",
+    "vehicle_year",
     "location_address",
     "urgency",
     "on_site_contact_name",
@@ -88,6 +89,7 @@ def create_enquiry(current_user, client_company_id, data):
         service_type_id=data.get("service_type_id"),
         vehicle_registration=data.get("vehicle_registration"),
         vehicle_make_model=data.get("vehicle_make_model"),
+        vehicle_year=data.get("vehicle_year"),
         location_address=data.get("location_address"),
         urgency=data.get("urgency"),
         on_site_contact_name=data.get("on_site_contact_name"),
