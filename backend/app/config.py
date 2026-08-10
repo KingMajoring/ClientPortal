@@ -23,6 +23,12 @@ class BaseConfig:
     # How long an unactioned ETA is allowed to stand before it's flagged expired.
     ETA_EXPIRY_GRACE_HOURS = int(os.environ.get("ETA_EXPIRY_GRACE_HOURS", "2"))
 
+    # Auto Guru Services VRM lookup (vehicle_lookup_service.py). Leave unset
+    # to disable the feature — the lookup endpoint then returns 503 and the
+    # frontend falls back to manual entry.
+    AUTOGURU_CLIENT_ID = os.environ.get("AUTOGURU_CLIENT_ID")
+    AUTOGURU_CLIENT_SECRET = os.environ.get("AUTOGURU_CLIENT_SECRET")
+
 
 class DevConfig(BaseConfig):
     DEBUG = True

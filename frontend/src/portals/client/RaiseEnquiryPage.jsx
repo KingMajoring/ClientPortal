@@ -17,6 +17,17 @@ export function RaiseEnquiryPage() {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
+  function applyVehicleLookup(result) {
+    setValues((prev) => {
+      const next = { ...prev };
+      const makeModel = [result.make, result.model].filter(Boolean).join(" ");
+      if (makeModel && config.fields.some((f) => f.field_key === "vehicle_make_model")) {
+        next.vehicle_make_model = makeModel;
+      }
+      return next;
+    });
+  }
+
   async function submit(e) {
     e.preventDefault();
     setError(null);
@@ -62,9 +73,24 @@ export function RaiseEnquiryPage() {
             </label>
           )}
 
-          {config.fields.map((field) => (
-            <FormField key={field.field_key} field={field} onChange={(v) => setValue(field.field_key, v)} />
-          ))}
+          {config.fields.map((field) =>
+            field.field_key === "vehicle_registration" ? (
+              <VehicleRegField
+                key={field.field_key}
+                field={field}
+                value={values.vehicle_registration || ""}
+                onChange={(v) => setValue(field.field_key, v)}
+                onLookedUp={applyVehicleLookup}
+              />
+            ) : (
+              <FormField
+                key={field.field_key}
+                field={field}
+                value={values[field.field_key]}
+                onChange={(v) => setValue(field.field_key, v)}
+              />
+            )
+          )}
 
           {error && <p className="form-error">{error}</p>}
           <button type="submit">Submit enquiry</button>
@@ -74,8 +100,8 @@ export function RaiseEnquiryPage() {
   );
 }
 
-function FormField({ field, onChange }) {
-  const commonProps = { required: field.is_required, onChange: (e) => onChange(e.target.value) };
+function FormField({ field, value, onChange }) {
+  const commonProps = { required: field.is_required, value: value ?? "", onChange: (e) => onChange(e.target.value) };
 
   return (
     <label>
@@ -93,10 +119,56 @@ function FormField({ field, onChange }) {
         </select>
       )}
       {field.field_type === "date" && <input type="date" {...commonProps} />}
-      {field.field_type === "checkbox" && <input type="checkbox" onChange={(e) => onChange(e.target.checked)} />}
+      {field.field_type === "checkbox" && (
+        <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} />
+      )}
       {(field.field_type === "text" || !["textarea", "select", "date", "checkbox"].includes(field.field_type)) && (
         <input type="text" {...commonProps} />
       )}
+    </label>
+  );
+}
+
+function VehicleRegField({ field, value, onChange, onLookedUp }) {
+  const [status, setStatus] = useState(null); // { kind: "success" | "error", message }
+  const [loading, setLoading] = useState(false);
+
+  async function lookup() {
+    if (!value.trim()) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const result = await api.get(`/shared/vehicle-lookup/${encodeURIComponent(value.trim())}`);
+      onLookedUp(result);
+      const description = [result.make, result.model].filter(Boolean).join(" ") || "Vehicle";
+      setStatus({ kind: "success", message: `Found: ${description}` });
+    } catch (err) {
+      setStatus({ kind: "error", message: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <label>
+      {field.label}
+      {field.is_required && " *"}
+      <div className="action-row" style={{ margin: 0 }}>
+        <input
+          type="text"
+          required={field.is_required}
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setStatus(null);
+          }}
+          style={{ flex: 1 }}
+        />
+        <button type="button" className="btn-secondary" onClick={lookup} disabled={loading || !value.trim()}>
+          {loading ? "Looking up..." : "Look up"}
+        </button>
+      </div>
+      {status && <p className={status.kind === "success" ? "form-success" : "form-error"}>{status.message}</p>}
     </label>
   );
 }
