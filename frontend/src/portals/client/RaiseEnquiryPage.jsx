@@ -18,16 +18,15 @@ export function RaiseEnquiryPage() {
   }
 
   function applyVehicleLookup(result) {
-    const configuredKeys = new Set(config.fields.map((f) => f.field_key));
+    // Always capture what the lookup found, even if this client's form
+    // doesn't have separate Make/Model/Year fields configured — the backend
+    // stores these on fixed columns regardless, so staff still see them on
+    // the enquiry rather than the lookup result being thrown away.
     setValues((prev) => {
       const next = { ...prev };
       const makeModel = [result.make, result.model].filter(Boolean).join(" ");
-      if (makeModel && configuredKeys.has("vehicle_make_model")) {
-        next.vehicle_make_model = makeModel;
-      }
-      if (result.year && configuredKeys.has("vehicle_year")) {
-        next.vehicle_year = result.year;
-      }
+      if (makeModel) next.vehicle_make_model = makeModel;
+      if (result.year) next.vehicle_year = result.year;
       return next;
     });
   }
