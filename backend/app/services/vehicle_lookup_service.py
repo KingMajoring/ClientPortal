@@ -96,11 +96,46 @@ def lookup_vehicle(raw_vrm):
     return _normalize_response(vrm, response.json())
 
 
-def _normalize_response(vrm, data):
-    """Auto Guru's exact field names aren't nailed down in the integration
-    guide we have, so pick up common variants defensively and always pass
-    the raw payload through too."""
+def _dig(data, *path):
+    current = data
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    if current in (None, "", "N/A", "0001-01-01"):
+        return None
+    return current
 
+
+def _title_if_shouty(value):
+    """DVLA fields come back SHOUTING ("VAUXHALL", "CORSA SE"); the
+    enhanced gcode fields are already sensibly cased ("Vauxhall"). Only
+    reformat the former so we don't mangle already-good casing."""
+    if isinstance(value, str) and value.isupper():
+        return value.title()
+    return value
+
+
+def _normalize_response(vrm, data):
+    """Real Auto Guru VRM responses nest DVLA data under `dvladata` (all
+    lowercase keys, SHOUTY values) and richer, better-cased data under
+    `enhanceddata.gcodedata`. Prefer the gcode fields for display, fall
+    back to dvladata, and always pass the raw payload through too since
+    not every vehicle has both blocks populated."""
+    dvla = data.get("dvladata") or {}
+    gcode = _dig(data, "enhanceddata", "gcodedata") or {}
+
+    make = gcode.get("manufacturer") or _title_if_shouty(dvla.get("manufacturer"))
+
+    model = " ".join(filter(None, [gcode.get("model"), gcode.get("derivative")]))
+    model = model or _title_if_shouty(dvla.get("model"))
+
+    colour = _title_if_shouty(_dig(dvla, "colour", "current"))
+    fuel_type = gcode.get("fueltype") or _title_if_shouty(dvla.get("fuel"))
+    year = dvla.get("manufactureyear") or (dvla.get("manufacturedate") or "")[:4] or None
+
+    # Fall back to a flatter shape in case a different vehicle type (or a
+    # future Auto Guru API version) doesn't nest under dvladata/gcodedata.
     def first(*keys):
         for key in keys:
             value = data.get(key)
@@ -110,10 +145,10 @@ def _normalize_response(vrm, data):
 
     return {
         "registration": vrm,
-        "make": first("Make", "make", "ManufacturerDescription"),
-        "model": first("Model", "model", "ModelDescription", "ModelVariant"),
-        "colour": first("Colour", "colour", "Color", "ColourDescription"),
-        "year": first("YearOfManufacture", "year", "ManufacturedYear"),
-        "fuel_type": first("FuelType", "fuel_type", "FuelTypeDescription"),
+        "make": make or first("Make", "make"),
+        "model": model or first("Model", "model"),
+        "colour": colour or first("Colour", "colour", "Color"),
+        "year": year or first("YearOfManufacture", "year"),
+        "fuel_type": fuel_type or first("FuelType", "fuel_type"),
         "raw": data,
     }
