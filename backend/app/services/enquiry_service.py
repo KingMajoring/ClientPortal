@@ -123,6 +123,42 @@ def create_enquiry(current_user, client_company_id, data):
     return enquiry
 
 
+def create_enquiry_from_sync(current_user, client_company_id, fixed_fields, external_ref, internal_note_text=None):
+    """Creates an Enquiry directly from an external system's data (e.g. an
+    Apex RMS job) rather than a client-submitted form payload. Bypasses
+    the EnquiryFormField required-field validation loop in create_enquiry
+    since there's no client form submission to validate here - the caller
+    is responsible for dedup (checking `external_ref` doesn't already
+    exist) before calling this."""
+    enquiry = Enquiry(
+        reference="PENDING",
+        client_company_id=client_company_id,
+        created_by_user_id=current_user.id,
+        external_ref=external_ref,
+        status=EnquiryStatus.NEW,
+        **fixed_fields,
+    )
+    db.session.add(enquiry)
+    db.session.flush()  # assign enquiry.id
+
+    enquiry.reference = format_enquiry_reference(enquiry.id)
+    _record_history(enquiry, None, EnquiryStatus.NEW, current_user)
+
+    if internal_note_text:
+        db.session.add(
+            JobNote(
+                enquiry_id=enquiry.id,
+                author_user_id=current_user.id,
+                note_text=internal_note_text,
+                visibility=NoteVisibility.INTERNAL,
+            )
+        )
+
+    db.session.commit()
+    _notify_safely(notification_service.notify_new_enquiry, enquiry)
+    return enquiry
+
+
 def send_quote(current_user, enquiry, eta_date, eta_is_same_day, price):
     _require_status(enquiry, EnquiryStatus.NEW, EnquiryStatus.ETA_EXPIRED)
     enquiry.eta_date = eta_date

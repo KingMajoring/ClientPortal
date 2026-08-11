@@ -46,6 +46,11 @@ export function EnquiryDetailPage() {
             <p className="subtitle">
               <StatusBadge status={enquiry.status} />
               {enquiry.is_eta_expired && <span className="badge badge-red" style={{ marginLeft: "0.5rem" }}>ETA expired</span>}
+              {enquiry.external_ref?.startsWith("apex:") && (
+                <span className="badge badge-gray" style={{ marginLeft: "0.5rem" }}>
+                  Synced from Apex (job {enquiry.external_ref.replace("apex:", "")})
+                </span>
+              )}
             </p>
           </div>
         </div>

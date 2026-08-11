@@ -127,6 +127,9 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
   const [targets, setTargets] = useState(client.sla_targets);
   const [serviceTypeNames, setServiceTypeNames] = useState(client.service_types.map((s) => s.name).join(", "));
   const [fields, setFields] = useState(client.form_fields.map(toEditableField));
+  const [apexAccountName, setApexAccountName] = useState(client.apex_account_name || "");
+  const [syncSummary, setSyncSummary] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const [savedMessage, setSavedMessage] = useState(null);
   const [error, setError] = useState(null);
 
@@ -176,6 +179,33 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
       setSavedMessage("Enquiry form fields saved.");
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function saveApexAccountName() {
+    setError(null);
+    try {
+      await onSavedWrap(
+        api.put(`/staff/clients/${client.id}/apex-account-name`, { apex_account_name: apexAccountName })
+      );
+      setSavedMessage("Apex account name saved.");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function syncApexJobs() {
+    setError(null);
+    setSyncSummary(null);
+    setSyncing(true);
+    try {
+      const summary = await api.post(`/staff/clients/${client.id}/apex-sync`, {});
+      setSyncSummary(summary);
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -303,6 +333,45 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
       </div>
 
       <button onClick={saveFields} style={{ marginTop: "0.75rem" }}>Save form fields</button>
+
+      <h4 className="section-title" style={{ marginTop: "1.5rem" }}>Apex RMS job sync</h4>
+      <p style={{ color: "var(--text-secondary)", fontSize: "0.82rem", marginTop: "-0.5rem" }}>
+        Pulls this client's jobs from Apex RMS (by AccountName) into enquiries here. Leave blank to disable.
+      </p>
+      <div className="action-row">
+        <input
+          placeholder="Apex AccountName (e.g. Egertons)"
+          style={{ flex: 1 }}
+          value={apexAccountName}
+          onChange={(e) => setApexAccountName(e.target.value)}
+        />
+        <button className="btn-secondary" onClick={saveApexAccountName}>Save account name</button>
+        <button onClick={syncApexJobs} disabled={syncing || !client.apex_account_name}>
+          {syncing ? "Syncing..." : "Sync now"}
+        </button>
+      </div>
+      {client.apex_last_synced_at && (
+        <p style={{ color: "var(--text-tertiary)", fontSize: "0.8rem" }}>
+          Last synced: {new Date(client.apex_last_synced_at).toLocaleString()}
+        </p>
+      )}
+      {syncSummary && (
+        <div style={{ fontSize: "0.85rem", background: "#FAFAFC", padding: "0.6rem", borderRadius: "var(--radius-sm)" }}>
+          <p style={{ margin: "0 0 0.3rem" }}>
+            Created {syncSummary.created.length} enquir{syncSummary.created.length === 1 ? "y" : "ies"}
+            {syncSummary.created.length > 0 && `: ${syncSummary.created.join(", ")}`}
+          </p>
+          <p style={{ margin: 0, color: "var(--text-tertiary)" }}>
+            Skipped: {syncSummary.skipped_existing} already synced, {syncSummary.skipped_outside_lookback} too old,{" "}
+            {syncSummary.skipped_rate_limit} deferred to next sync
+          </p>
+          {syncSummary.errors.length > 0 && (
+            <p className="form-error" style={{ marginTop: "0.3rem" }}>
+              {syncSummary.errors.join("; ")}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

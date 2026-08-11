@@ -18,6 +18,7 @@ def serialize_enquiry(enquiry):
         "urgency": enquiry.urgency,
         "on_site_contact_name": enquiry.on_site_contact_name,
         "on_site_contact_phone": enquiry.on_site_contact_phone,
+        "external_ref": enquiry.external_ref,
         "extra_fields": json.loads(enquiry.extra_fields_json) if enquiry.extra_fields_json else {},
         "eta_date": enquiry.eta_date.isoformat() if enquiry.eta_date else None,
         "eta_is_same_day": enquiry.eta_is_same_day,

@@ -8,7 +8,7 @@ from app.auth.decorators import require_role, require_wgtk
 from app.extensions import db
 from app.models.client import ClientCompany, ClientFeatureFlag, ClientSLATarget, EnquiryFormField, ServiceType
 from app.models.user import User, UserRole
-from app.services import client_admin_service, user_service
+from app.services import apex_sync_service, client_admin_service, user_service
 from app.utils.errors import NotFoundError, ValidationError
 
 
@@ -36,6 +36,8 @@ def serialize_client(company):
             }
             for f in company.form_fields
         ],
+        "apex_account_name": company.apex_account_name,
+        "apex_last_synced_at": company.apex_last_synced_at.isoformat() if company.apex_last_synced_at else None,
     }
 
 
@@ -142,6 +144,30 @@ def set_form_fields(client_id):
     client_admin_service.replace_form_fields(client_id, payload.get("fields", []))
     company = db.session.get(ClientCompany, client_id)
     return jsonify(serialize_client(company))
+
+
+@staff_bp.put("/clients/<int:client_id>/apex-account-name")
+@login_required
+@require_role(UserRole.WGTK_ADMIN)
+def set_apex_account_name(client_id):
+    company = db.session.get(ClientCompany, client_id)
+    if not company:
+        raise NotFoundError("Client company not found")
+    payload = request.get_json(silent=True) or {}
+    company.apex_account_name = (payload.get("apex_account_name") or "").strip() or None
+    db.session.commit()
+    return jsonify(serialize_client(company))
+
+
+@staff_bp.post("/clients/<int:client_id>/apex-sync")
+@login_required
+@require_wgtk
+def sync_apex_jobs(client_id):
+    company = db.session.get(ClientCompany, client_id)
+    if not company:
+        raise NotFoundError("Client company not found")
+    summary = apex_sync_service.sync_client(company)
+    return jsonify(summary)
 
 
 @staff_bp.get("/users")

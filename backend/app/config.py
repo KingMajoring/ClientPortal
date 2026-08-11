@@ -29,6 +29,12 @@ class BaseConfig:
     AUTOGURU_CLIENT_ID = os.environ.get("AUTOGURU_CLIENT_ID")
     AUTOGURU_CLIENT_SECRET = os.environ.get("AUTOGURU_CLIENT_SECRET")
 
+    # Apex RMS job sync (apex_service.py). Leave unset to disable - the sync
+    # endpoint then returns 503 rather than crashing.
+    APEX_BASE_URL = os.environ.get("APEX_BASE_URL", "https://wevegotthekey.apex-rms.com/api/v1/RAndRWebService.asmx")
+    APEX_USERNAME = os.environ.get("APEX_USERNAME")
+    APEX_PASSWORD = os.environ.get("APEX_PASSWORD")
+
 
 class DevConfig(BaseConfig):
     DEBUG = True

@@ -18,6 +18,12 @@ class ClientCompany(db.Model, TimestampMixin):
     # Placeholder for future Orbit/Soter CRM linkage. Not used in this phase.
     external_ref = db.Column(db.String(100), nullable=True)
 
+    # Apex RMS job sync (apex_service.py / apex_sync_service.py). AccountName
+    # as it appears in Apex's own system, used to filter GetRecoveryJobsList
+    # to just this client's jobs. Null means this client has no Apex sync.
+    apex_account_name = db.Column(db.String(200), nullable=True)
+    apex_last_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     users = db.relationship("User", back_populates="client_company", lazy="dynamic")
     enquiries = db.relationship("Enquiry", back_populates="client_company", lazy="dynamic")
     feature_flags = db.relationship(
