@@ -189,11 +189,7 @@ def send_quote(current_user, enquiry, eta_date, eta_is_same_day, price):
     return enquiry
 
 
-def accept_quote(current_user, enquiry):
-    _require_status(enquiry, EnquiryStatus.QUOTED)
-    _record_history(enquiry, enquiry.status, EnquiryStatus.ACCEPTED, current_user)
-    db.session.commit()
-
+def _generate_letter_of_authority(enquiry):
     relative_path = pdf_service.generate_letter_of_authority(enquiry)
     loa = JobDocument(
         enquiry_id=enquiry.id,
@@ -207,8 +203,38 @@ def accept_quote(current_user, enquiry):
     db.session.add(loa)
     db.session.commit()
 
+
+def accept_quote(current_user, enquiry):
+    _require_status(enquiry, EnquiryStatus.QUOTED)
+    _record_history(enquiry, enquiry.status, EnquiryStatus.ACCEPTED, current_user)
+    db.session.commit()
+
+    _generate_letter_of_authority(enquiry)
+
     _notify_safely(notification_service.notify_accepted, enquiry)
     _push_apex_note_safely(enquiry, f"Client accepted quote (£{enquiry.price})")
+    return enquiry
+
+
+def accept_apex_job(current_user, enquiry):
+    """For an Apex-sourced enquiry, WGTK accepting the job directly - no
+    quote/accept negotiation needed, since Egertons already committed to
+    the job by creating it in Apex. Skips straight from NEW to ACCEPTED
+    and confirms back to Apex via the same history-note mechanism as
+    every other lifecycle push."""
+    if not enquiry.external_ref or not enquiry.external_ref.startswith("apex:"):
+        raise ValidationError("This action is only available for jobs synced from Apex")
+    _require_status(enquiry, EnquiryStatus.NEW)
+    _record_history(
+        enquiry, enquiry.status, EnquiryStatus.ACCEPTED, current_user,
+        reason="Accepted directly (Apex-sourced job, no quote required)",
+    )
+    db.session.commit()
+
+    _generate_letter_of_authority(enquiry)
+
+    _notify_safely(notification_service.notify_accepted, enquiry)
+    _push_apex_note_safely(enquiry, "WGTK has accepted this job and will proceed.")
     return enquiry
 
 

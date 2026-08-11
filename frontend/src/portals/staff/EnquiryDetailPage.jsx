@@ -150,6 +150,17 @@ function ActionPanel({ enquiry, act }) {
 
   return (
     <CardSection icon="check" title="Actions">
+      {enquiry.status === "NEW" && enquiry.external_ref?.startsWith("apex:") && (
+        <div className="action-row">
+          <h4 className="section-title">Accept job (Apex)</h4>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.82rem", margin: 0, flexBasis: "100%" }}>
+            Egertons already committed to this by creating it in Apex — skip the quote and accept it directly.
+            Confirms back to Apex automatically.
+          </p>
+          <button onClick={() => act("accept-apex-job", {})}>Accept job</button>
+        </div>
+      )}
+
       {(enquiry.status === "NEW" || enquiry.status === "ETA_EXPIRED") && (
         <div className="action-row">
           <h4 className="section-title">Send quote</h4>

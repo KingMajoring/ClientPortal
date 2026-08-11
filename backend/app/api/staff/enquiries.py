@@ -113,6 +113,15 @@ def send_quote(enquiry_id):
     return jsonify(serialize_enquiry(enquiry))
 
 
+@staff_bp.post("/enquiries/<int:enquiry_id>/accept-apex-job")
+@login_required
+@require_wgtk
+def accept_apex_job(enquiry_id):
+    enquiry = enquiry_service.get_for_user(current_user, enquiry_id)
+    enquiry = enquiry_service.accept_apex_job(current_user, enquiry)
+    return jsonify(serialize_enquiry(enquiry))
+
+
 @staff_bp.post("/enquiries/<int:enquiry_id>/decline")
 @login_required
 @require_wgtk
