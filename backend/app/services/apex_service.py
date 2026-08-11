@@ -121,3 +121,14 @@ def get_job_details(job_id):
     if result_elem is None:
         raise ApiError(f"Apex RMS returned no details for job {job_id}", status_code=502)
     return _leaf_children_to_dict(result_elem)
+
+
+def add_job_history_entry(job_id, audit_text, job_type="RecoveryJob"):
+    """Writes a manual entry into a job's audit log in Apex (the "Job
+    Changes" history table visible in Apex's own UI) - the only write-back
+    method Apex's API exposes; there's no method to set ETA/on-scene/
+    completion timestamps directly, so lifecycle updates get pushed as
+    timestamped notes here instead."""
+    root = _call("AddJobHistoryEntry", {"jobId": job_id, "jobType": job_type, "auditText": audit_text})
+    result_elem = root.find(f".//{{{NS_API}}}AddJobHistoryEntryResult")
+    return (result_elem.text or "").strip().lower() == "true" if result_elem is not None else False

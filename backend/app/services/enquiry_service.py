@@ -12,7 +12,7 @@ from app.extensions import db
 from app.models.client import EnquiryFormField
 from app.models.enquiry import DeclineReasonType, Enquiry, EnquiryStatus, EnquiryStatusHistory
 from app.models.job import DocumentStatus, DocumentType, JobDocument, JobNote, NoteVisibility
-from app.services import notification_service, pdf_service
+from app.services import apex_service, notification_service, pdf_service
 from app.services.tenant_scope import assert_tenant_match, scope_query_to_tenant
 from app.utils.errors import NotFoundError, ValidationError
 from app.utils.references import format_enquiry_reference
@@ -29,6 +29,22 @@ def _notify_safely(notify_fn, *args, **kwargs):
         notify_fn(*args, **kwargs)
     except Exception:
         logger.exception("Notification failed: %s", notify_fn.__name__)
+
+
+def _push_apex_note_safely(enquiry, text):
+    """Mirrors a WGTK-side lifecycle update into the Apex job's own audit
+    log, for enquiries that came from an Apex sync (external_ref is set).
+    Apex has no dedicated ETA/on-scene/completion fields exposed via the
+    API - AddJobHistoryEntry is the only write-back method that exists, so
+    every update goes in as a timestamped note there. Never lets a failure
+    here affect the WGTK-side action that triggered it."""
+    if not enquiry.external_ref or not enquiry.external_ref.startswith("apex:"):
+        return
+    job_id = enquiry.external_ref.split(":", 1)[1]
+    try:
+        apex_service.add_job_history_entry(job_id, text)
+    except Exception:
+        logger.exception("Apex history push failed for job %s", job_id)
 
 
 FIXED_FIELD_KEYS = {
@@ -168,6 +184,8 @@ def send_quote(current_user, enquiry, eta_date, eta_is_same_day, price):
     _record_history(enquiry, enquiry.status, EnquiryStatus.QUOTED, current_user)
     db.session.commit()
     _notify_safely(notification_service.notify_quote_sent, enquiry)
+    eta_desc = "same day" if eta_is_same_day else str(eta_date)
+    _push_apex_note_safely(enquiry, f"WGTK quote sent - ETA {eta_desc}, price £{price}")
     return enquiry
 
 
@@ -190,6 +208,7 @@ def accept_quote(current_user, enquiry):
     db.session.commit()
 
     _notify_safely(notification_service.notify_accepted, enquiry)
+    _push_apex_note_safely(enquiry, f"Client accepted quote (£{enquiry.price})")
     return enquiry
 
 
@@ -210,6 +229,7 @@ def decline_by_client(current_user, enquiry, reason_type: DeclineReasonType, rea
         )
     db.session.commit()
     _notify_safely(notification_service.notify_declined, enquiry, declined_by="client")
+    _push_apex_note_safely(enquiry, f"Client declined ({reason_type.value}): {reason_text or ''}".strip())
     return enquiry
 
 
@@ -221,6 +241,7 @@ def decline_by_wgtk(current_user, enquiry, reason_text):
     _record_history(enquiry, enquiry.status, EnquiryStatus.DECLINED_BY_WGTK, current_user, reason=reason_text)
     db.session.commit()
     _notify_safely(notification_service.notify_declined, enquiry, declined_by="wgtk")
+    _push_apex_note_safely(enquiry, f"WGTK declined: {reason_text}")
     return enquiry
 
 
@@ -231,6 +252,7 @@ def schedule(current_user, enquiry, scheduled_at):
     _record_history(enquiry, enquiry.status, EnquiryStatus.SCHEDULED, current_user)
     db.session.commit()
     _notify_safely(notification_service.notify_appointment_set, enquiry)
+    _push_apex_note_safely(enquiry, f"WGTK appointment scheduled for {scheduled_at}")
     return enquiry
 
 
@@ -243,6 +265,7 @@ def reschedule(current_user, enquiry, new_scheduled_at, reason):
     _record_history(enquiry, enquiry.status, EnquiryStatus.SCHEDULED, current_user, reason=reason)
     db.session.commit()
     _notify_safely(notification_service.notify_rescheduled, enquiry)
+    _push_apex_note_safely(enquiry, f"WGTK appointment rescheduled to {new_scheduled_at} - {reason}")
     return enquiry
 
 
@@ -293,6 +316,7 @@ def complete(current_user, enquiry, completion_notes):
         )
     db.session.commit()
     _notify_safely(notification_service.notify_completed, enquiry)
+    _push_apex_note_safely(enquiry, f"WGTK marked job complete" + (f" - {completion_notes}" if completion_notes else ""))
     return enquiry
 
 
@@ -304,6 +328,10 @@ def add_note(current_user, enquiry, note_text, visibility: NoteVisibility):
     )
     db.session.add(note)
     db.session.commit()
+    # Only client-visible notes go to Apex - it's Egertons' own shared job
+    # history, so WGTK-internal-only notes must never appear there.
+    if visibility == NoteVisibility.CLIENT_VISIBLE:
+        _push_apex_note_safely(enquiry, f"{current_user.full_name}: {note_text}")
     return note
 
 
