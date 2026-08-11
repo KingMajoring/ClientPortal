@@ -217,6 +217,46 @@ _RECOVERY_JOB_DETAIL_FIELDS = [
 # on create, and JobServices likewise ("leave null").
 
 
+def populate_planned_driver(job_id, planned_driver, job_type="RecoveryJob"):
+    """PopulatePlannedDriver - sets JobPlannedDriver (a free-text field, no
+    driver ID lookup needed). This is the practical way to assign a driver
+    from the API: GetDrivers isn't enabled on WGTK's Apex account (confirmed
+    against the live WSDL - it simply isn't in the operation list), so
+    there's no way to resolve a numeric driverId for PopulateJobAllocation."""
+    root = _call("PopulatePlannedDriver", {"jobId": job_id, "jobType": job_type, "plannedDriver": planned_driver})
+    result_elem = root.find(f".//{{{NS_API}}}PopulatePlannedDriverResult")
+    return (result_elem.text or "").strip().lower() == "true" if result_elem is not None else False
+
+
+def populate_job_allocation(job_id, driver_id, vehicle_id, send_to_drivers_device=False, job_type="RecoveryJob"):
+    """PopulateJobAllocation - sets the Main Service driver+vehicle by
+    numeric ID. Confirmed shape from the WSDL, but WGTK's Apex account has
+    no GetDrivers/GetVehicles method to resolve real IDs from, so this is
+    unused until real driverId/vehicleId values are obtained some other way
+    (e.g. Apex support, or inspecting their own UI)."""
+    root = _call(
+        "PopulateJobAllocation",
+        {
+            "jobId": job_id,
+            "jobType": job_type,
+            "driverId": driver_id,
+            "vehicleId": vehicle_id,
+            "sendToDriversDevice": "true" if send_to_drivers_device else "false",
+        },
+    )
+    result_elem = root.find(f".//{{{NS_API}}}PopulateJobAllocationResult")
+    return (result_elem.text or "").strip().lower() == "true" if result_elem is not None else False
+
+
+def remove_job_allocation(job_id, job_type="RecoveryJob"):
+    """RemoveJobAllocation - clears the Main Service driver+vehicle from a
+    job. If the job was already sent to the driver's device, Apex sends
+    that driver a cancellation as a side effect."""
+    root = _call("RemoveJobAllocation", {"jobId": job_id, "jobType": job_type})
+    result_elem = root.find(f".//{{{NS_API}}}RemoveJobAllocationResult")
+    return (result_elem.text or "").strip().lower() == "true" if result_elem is not None else False
+
+
 def create_recovery_job(details):
     """CreateRecoveryJob - creates a permanent job record in Apex's live
     system. `details` is a dict using the RecoveryJobDetails field names

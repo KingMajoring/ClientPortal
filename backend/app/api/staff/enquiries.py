@@ -10,7 +10,7 @@ from app.api.staff import staff_bp
 from app.auth.decorators import require_wgtk
 from app.models.enquiry import EnquiryStatus
 from app.models.job import DocumentType, NoteVisibility
-from app.services import enquiry_service
+from app.services import apex_drivers, enquiry_service
 from app.utils.errors import ValidationError
 
 
@@ -119,6 +119,23 @@ def send_quote(enquiry_id):
 def accept_apex_job(enquiry_id):
     enquiry = enquiry_service.get_for_user(current_user, enquiry_id)
     enquiry = enquiry_service.accept_apex_job(current_user, enquiry)
+    return jsonify(serialize_enquiry(enquiry))
+
+
+@staff_bp.get("/apex-drivers")
+@login_required
+@require_wgtk
+def list_apex_drivers():
+    return jsonify(apex_drivers.DRIVERS)
+
+
+@staff_bp.post("/enquiries/<int:enquiry_id>/apex-set-planned-driver")
+@login_required
+@require_wgtk
+def set_apex_planned_driver(enquiry_id):
+    enquiry = enquiry_service.get_for_user(current_user, enquiry_id)
+    payload = request.get_json(silent=True) or {}
+    enquiry = enquiry_service.set_apex_planned_driver(current_user, enquiry, payload.get("driver_name"))
     return jsonify(serialize_enquiry(enquiry))
 
 

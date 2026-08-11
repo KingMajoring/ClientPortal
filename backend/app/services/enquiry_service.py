@@ -238,6 +238,29 @@ def accept_apex_job(current_user, enquiry):
     return enquiry
 
 
+def set_apex_planned_driver(current_user, enquiry, driver_name):
+    """Sets Apex's Main Service planned-driver field via PopulatePlannedDriver
+    (a free-text field, not the numeric-ID PopulateJobAllocation - see
+    apex_service for why). Logs an internal note here too so staff can see
+    the allocation without needing to open Apex's own UI."""
+    if not enquiry.external_ref or not enquiry.external_ref.startswith("apex:"):
+        raise ValidationError("This action is only available for jobs synced from Apex")
+    if not driver_name:
+        raise ValidationError("driver_name is required")
+    job_id = enquiry.external_ref.split(":", 1)[1]
+    apex_service.populate_planned_driver(job_id, driver_name)
+    db.session.add(
+        JobNote(
+            enquiry_id=enquiry.id,
+            author_user_id=current_user.id,
+            note_text=f"Main Service: planned driver set to {driver_name} (via Apex API).",
+            visibility=NoteVisibility.INTERNAL,
+        )
+    )
+    db.session.commit()
+    return enquiry
+
+
 def decline_by_client(current_user, enquiry, reason_type: DeclineReasonType, reason_text=None):
     _require_status(enquiry, EnquiryStatus.QUOTED)
     enquiry.decline_reason_type = reason_type

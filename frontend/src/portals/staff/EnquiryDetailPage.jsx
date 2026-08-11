@@ -73,6 +73,8 @@ export function EnquiryDetailPage() {
 
       <ActionPanel enquiry={enquiry} act={act} />
 
+      {enquiry.external_ref?.startsWith("apex:") && <MainServicePanel enquiry={enquiry} act={act} />}
+
       <CardSection icon="file" title="Job notes">
         <NoteForm onSubmit={(note_text, visibility) => act("notes", { note_text, visibility })} />
         <ul className="plain-list">
@@ -207,6 +209,55 @@ function ActionPanel({ enquiry, act }) {
           <button onClick={() => act("complete", { completion_notes: completionNotes })}>Mark complete</button>
         </div>
       )}
+    </CardSection>
+  );
+}
+
+function MainServicePanel({ enquiry, act }) {
+  const [drivers, setDrivers] = useState([]);
+  const [driverName, setDriverName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [confirmedAt, setConfirmedAt] = useState(null);
+
+  useEffect(() => {
+    api.get("/staff/apex-drivers").then(setDrivers);
+  }, []);
+
+  async function setPlannedDriver() {
+    if (!driverName) return;
+    setSaving(true);
+    setConfirmedAt(null);
+    try {
+      await act("apex-set-planned-driver", { driver_name: driverName });
+      setConfirmedAt(new Date());
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <CardSection icon="users" title="Main service">
+      <p style={{ color: "var(--text-secondary)", fontSize: "0.82rem", margin: "0 0 0.5rem" }}>
+        Sets the planned driver directly on the Apex job. Apex's own driver/vehicle picklist API
+        isn't enabled on WGTK's account, so vehicle allocation isn't available here yet — only
+        the planned driver field.
+      </p>
+      <div className="action-row">
+        <select value={driverName} onChange={(e) => setDriverName(e.target.value)}>
+          <option value="">Select a driver...</option>
+          {drivers.map((d) => (
+            <option key={d.buddy_no} value={d.name}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+        <button onClick={setPlannedDriver} disabled={!driverName || saving}>
+          {saving ? "Setting..." : "Set planned driver"}
+        </button>
+        {confirmedAt && (
+          <span className="badge badge-blue">Sent to Apex at {confirmedAt.toLocaleTimeString()}</span>
+        )}
+      </div>
     </CardSection>
   );
 }
