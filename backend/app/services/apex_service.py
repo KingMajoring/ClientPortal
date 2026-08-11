@@ -13,6 +13,7 @@ be more code and more risk for no benefit here.
 """
 
 import re
+import time
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 
@@ -43,9 +44,26 @@ def _get_credentials():
     return base_url, username, password
 
 
+_LOCK_RETRY_DELAY_SECONDS = 3
+
+
 def _call(operation, extra_fields=None):
     """`extra_fields` is an ordered dict of {field_name: value} beyond
-    apiLogin/apiPassword, in the exact order the WSDL declares them."""
+    apiLogin/apiPassword, in the exact order the WSDL declares them.
+
+    Retries once on Apex's "Job is currently locked" fault (a normal,
+    transient condition when a job is open for editing in Apex's own UI
+    at the same moment - not a real failure worth giving up on immediately)."""
+    try:
+        return _call_once(operation, extra_fields)
+    except ApiError as exc:
+        if "currently locked" not in exc.message.lower():
+            raise
+        time.sleep(_LOCK_RETRY_DELAY_SECONDS)
+        return _call_once(operation, extra_fields)
+
+
+def _call_once(operation, extra_fields=None):
     base_url, username, password = _get_credentials()
 
     fields = {"apiLogin": username, "apiPassword": password}
