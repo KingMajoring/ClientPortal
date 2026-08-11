@@ -37,6 +37,13 @@ MIN_SECONDS_BETWEEN_SYNCS = 35
 LOOKBACK_DAYS = 14
 MAX_DETAIL_CALLS_PER_SYNC = 15
 
+# Apex requires JobSiteCode on CreateRecoveryJob even though the WSDL
+# schema marks it optional - a business-rule requirement the schema
+# doesn't expose. "WGT" is WGTK's own site code in Apex (confirmed
+# against every real job we've inspected, e.g. job 3484), not anything
+# client- or job-specific, so it's a fixed default rather than parsed.
+APEX_SITE_CODE = "WGT"
+
 # Fields whose changes are worth flagging as a note. Anything else in
 # GetRecoveryJobDetails either doesn't apply to a locksmith job or isn't
 # something staff need alerted on.
@@ -259,6 +266,7 @@ def accept_ans_job(client_company, raw_message_text):
         raise ValidationError("This message's contract code doesn't match this client")
 
     job_detail_fields = apex_ans_service.build_recovery_job_details(fields, client_company.apex_account_name)
+    job_detail_fields["JobSiteCode"] = APEX_SITE_CODE
     new_job_id = apex_service.create_recovery_job(job_detail_fields)
 
     # Re-fetch the canonical record from Apex rather than trusting our own
