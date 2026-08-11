@@ -117,6 +117,11 @@ def build_recovery_job_details(fields, account_name):
 
     return {
         "JobOrderNo": single_value(fields, "1004"),
+        # The Number the job was received under from ANS - this is what
+        # links a created job back to the specific ANS message it came
+        # from, distinct from JobOrderNo (WGTK's own reference, which
+        # happens to reuse the same value in practice).
+        "JobEdiJobNo": single_value(fields, "1004"),
         "JobSalesAccName": account_name,
         "JobContractCode": single_value(fields, "1001"),
         "JobOwnerName": single_value(fields, "1101"),
