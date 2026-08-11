@@ -4,23 +4,50 @@ via a "Sync now" button rather than a real schedule, matching the same
 no-scheduler-infrastructure-yet pattern as `check_and_flag_eta_expired` in
 enquiry_service.py.
 
+Two things happen on every sync:
+1. New Apex jobs (within the lookback window) become new Enquiries.
+2. Already-synced jobs get checked for changes. Apex's GetRecoveryJobsList
+   already returns each job's LastModifiedDate for free, so that's used to
+   skip jobs that haven't changed without spending a details call on them -
+   only jobs whose LastModifiedDate actually moved get a GetRecoveryJobDetails
+   call and a diff against what we saw last time.
+
+There's still no API method to fetch Apex's actual history/note entries
+(confirmed against the WSDL) - "what changed" is inferred by diffing the
+job's current field values against the last snapshot we stored, not a real
+change-log feed.
+
 Respects Apex's rate limits (2 calls/minute on GetRecoveryJobsList, 20/min
-on GetRecoveryJobDetails) by refusing to sync too often and capping how
-many new jobs get their full details pulled per run - any jobs beyond
-that cap are picked up on the next sync.
+on GetRecoveryJobDetails) by refusing to sync too often and sharing a single
+per-run cap across both new-job and existing-job details calls - anything
+beyond that cap is picked up on the next sync.
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models.enquiry import Enquiry
+from app.models.job import JobNote, NoteVisibility
 from app.models.user import User, UserRole
 from app.services import apex_service, enquiry_service
 from app.utils.errors import ValidationError
 
 MIN_SECONDS_BETWEEN_SYNCS = 35
 LOOKBACK_DAYS = 14
-MAX_DETAILS_PER_SYNC = 15
+MAX_DETAIL_CALLS_PER_SYNC = 15
+
+# Fields whose changes are worth flagging as a note. Anything else in
+# GetRecoveryJobDetails either doesn't apply to a locksmith job or isn't
+# something staff need alerted on.
+WATCHED_FIELDS = [
+    ("JobStatus", "Status"),
+    ("JobOnHold", "On hold"),
+    ("Symptom", "Symptom"),
+    ("JobDestinationDesc", "Job notes"),
+    ("JobRamNotes", "RAM notes"),
+    ("JobPdaNotes", "Driver notes"),
+]
 
 
 def _find_admin_user(client_company_id):
@@ -51,18 +78,69 @@ def _build_fixed_fields(details):
     }
 
 
-def _build_internal_note(job_id, job_order_no, details):
+def _watched_snapshot(details):
+    return {key: details.get(key) for key, _ in WATCHED_FIELDS}
+
+
+def _build_initial_note(job_id, job_order_no, details):
     parts = [f"Synced from Apex RMS job {job_id} ({job_order_no})."]
-    for label, key in (
-        ("Symptom", "Symptom"),
-        ("Job notes", "JobDestinationDesc"),
-        ("RAM notes", "JobRamNotes"),
-        ("Driver notes", "JobPdaNotes"),
-    ):
+    for key, label in WATCHED_FIELDS:
         value = (details.get(key) or "").strip()
         if value:
             parts.append(f"{label}: {value}")
     return "\n\n".join(parts)
+
+
+def _diff_note(job_id, job_order_no, old_snapshot, new_snapshot):
+    changes = []
+    for key, label in WATCHED_FIELDS:
+        old_value = (old_snapshot.get(key) or "").strip()
+        new_value = (new_snapshot.get(key) or "").strip()
+        if old_value != new_value:
+            changes.append(f"{label}: {old_value or '(blank)'} -> {new_value or '(blank)'}")
+    if not changes:
+        return None
+    return f"Apex update on job {job_id} ({job_order_no}):\n\n" + "\n".join(changes)
+
+
+def _create_new(admin_user, client_company_id, job, details):
+    job_id = job.get("JobId")
+    enquiry = enquiry_service.create_enquiry_from_sync(
+        admin_user,
+        client_company_id,
+        {
+            **_build_fixed_fields(details),
+            "apex_last_modified_at": job.get("LastModifiedDate"),
+            "apex_snapshot_json": json.dumps(_watched_snapshot(details)),
+        },
+        external_ref=f"apex:{job_id}",
+        internal_note_text=_build_initial_note(job_id, job.get("JobOrderNo"), details),
+    )
+    return enquiry
+
+
+def _refresh_existing(admin_user, enquiry, job, details):
+    job_id = job.get("JobId")
+    old_snapshot = json.loads(enquiry.apex_snapshot_json) if enquiry.apex_snapshot_json else {}
+    new_snapshot = _watched_snapshot(details)
+
+    for key, value in _build_fixed_fields(details).items():
+        setattr(enquiry, key, value)
+    enquiry.apex_last_modified_at = job.get("LastModifiedDate")
+    enquiry.apex_snapshot_json = json.dumps(new_snapshot)
+
+    note_text = _diff_note(job_id, job.get("JobOrderNo"), old_snapshot, new_snapshot)
+    if note_text:
+        db.session.add(
+            JobNote(
+                enquiry_id=enquiry.id,
+                author_user_id=admin_user.id,
+                note_text=note_text,
+                visibility=NoteVisibility.INTERNAL,
+            )
+        )
+    db.session.commit()
+    return note_text is not None
 
 
 def sync_client(client_company):
@@ -89,15 +167,29 @@ def sync_client(client_company):
     jobs = apex_service.list_jobs(account_name=client_company.apex_account_name)
     cutoff = now - timedelta(days=LOOKBACK_DAYS)
 
-    created, errors = [], []
-    skipped_existing = skipped_outside_lookback = skipped_rate_limit = 0
+    created, updated, errors = [], [], []
+    skipped_unchanged = skipped_outside_lookback = skipped_rate_limit = 0
+    detail_calls_made = 0
 
     for job in jobs:
         job_id = job.get("JobId")
         external_ref = f"apex:{job_id}"
+        existing = Enquiry.query.filter_by(external_ref=external_ref).first()
 
-        if Enquiry.query.filter_by(external_ref=external_ref).first():
-            skipped_existing += 1
+        if existing:
+            if existing.apex_last_modified_at == job.get("LastModifiedDate"):
+                skipped_unchanged += 1
+                continue
+            if detail_calls_made >= MAX_DETAIL_CALLS_PER_SYNC:
+                skipped_rate_limit += 1
+                continue
+            try:
+                details = apex_service.get_job_details(job_id)
+                detail_calls_made += 1
+                if _refresh_existing(admin_user, existing, job, details):
+                    updated.append(existing.reference)
+            except Exception as exc:  # noqa: BLE001 - one bad job must not abort the whole sync
+                errors.append(f"Apex job {job_id}: {exc}")
             continue
 
         last_modified = _parse_apex_datetime(job.get("LastModifiedDate"))
@@ -105,21 +197,16 @@ def sync_client(client_company):
             skipped_outside_lookback += 1
             continue
 
-        if len(created) >= MAX_DETAILS_PER_SYNC:
+        if detail_calls_made >= MAX_DETAIL_CALLS_PER_SYNC:
             skipped_rate_limit += 1
             continue
 
         try:
             details = apex_service.get_job_details(job_id)
-            enquiry = enquiry_service.create_enquiry_from_sync(
-                admin_user,
-                client_company.id,
-                _build_fixed_fields(details),
-                external_ref=external_ref,
-                internal_note_text=_build_internal_note(job_id, job.get("JobOrderNo"), details),
-            )
+            detail_calls_made += 1
+            enquiry = _create_new(admin_user, client_company.id, job, details)
             created.append(enquiry.reference)
-        except Exception as exc:  # noqa: BLE001 - one bad job must not abort the whole sync
+        except Exception as exc:  # noqa: BLE001
             errors.append(f"Apex job {job_id}: {exc}")
 
     client_company.apex_last_synced_at = now
@@ -127,7 +214,8 @@ def sync_client(client_company):
 
     return {
         "created": created,
-        "skipped_existing": skipped_existing,
+        "updated": updated,
+        "skipped_unchanged": skipped_unchanged,
         "skipped_outside_lookback": skipped_outside_lookback,
         "skipped_rate_limit": skipped_rate_limit,
         "errors": errors,

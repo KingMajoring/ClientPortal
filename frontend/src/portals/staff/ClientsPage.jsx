@@ -361,8 +361,12 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
             Created {syncSummary.created.length} enquir{syncSummary.created.length === 1 ? "y" : "ies"}
             {syncSummary.created.length > 0 && `: ${syncSummary.created.join(", ")}`}
           </p>
+          <p style={{ margin: "0 0 0.3rem" }}>
+            Updated {syncSummary.updated.length} enquir{syncSummary.updated.length === 1 ? "y" : "ies"} with changes from Apex
+            {syncSummary.updated.length > 0 && `: ${syncSummary.updated.join(", ")}`}
+          </p>
           <p style={{ margin: 0, color: "var(--text-tertiary)" }}>
-            Skipped: {syncSummary.skipped_existing} already synced, {syncSummary.skipped_outside_lookback} too old,{" "}
+            Skipped: {syncSummary.skipped_unchanged} unchanged, {syncSummary.skipped_outside_lookback} too old,{" "}
             {syncSummary.skipped_rate_limit} deferred to next sync
           </p>
           {syncSummary.errors.length > 0 && (

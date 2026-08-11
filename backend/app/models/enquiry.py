@@ -45,6 +45,14 @@ class Enquiry(db.Model, TimestampMixin):
     # Anything beyond the fixed columns, per the client's EnquiryFormField config.
     extra_fields_json = db.Column(db.Text, nullable=True)
 
+    # Apex RMS sync bookkeeping (apex_sync_service.py). apex_last_modified_at
+    # is Apex's own LastModifiedDate string, used to cheaply detect whether
+    # a synced job changed without spending a details API call on every
+    # sync. apex_snapshot_json is the last-seen values of the fields we
+    # watch for changes, so a re-sync can report what actually changed.
+    apex_last_modified_at = db.Column(db.String(50), nullable=True)
+    apex_snapshot_json = db.Column(db.Text, nullable=True)
+
     # Quote
     eta_date = db.Column(db.Date, nullable=True)
     eta_is_same_day = db.Column(db.Boolean, nullable=False, default=False)
