@@ -24,6 +24,11 @@ class ClientCompany(db.Model, TimestampMixin):
     apex_account_name = db.Column(db.String(200), nullable=True)
     apex_last_synced_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # ANS "Contract Code" (field 1001) - identifies this client within
+    # pending ANS job messages, which don't carry AccountName directly
+    # (apex_ans_service.py / apex_sync_service.accept_ans_job()).
+    apex_contract_code = db.Column(db.String(50), nullable=True)
+
     users = db.relationship("User", back_populates="client_company", lazy="dynamic")
     enquiries = db.relationship("Enquiry", back_populates="client_company", lazy="dynamic")
     feature_flags = db.relationship(

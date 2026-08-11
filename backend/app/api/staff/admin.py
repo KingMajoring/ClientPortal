@@ -3,6 +3,7 @@ import json
 from flask import jsonify, request
 from flask_login import current_user, login_required
 
+from app.api.serializers import serialize_enquiry
 from app.api.staff import staff_bp
 from app.auth.decorators import require_role, require_wgtk
 from app.extensions import db
@@ -37,6 +38,7 @@ def serialize_client(company):
             for f in company.form_fields
         ],
         "apex_account_name": company.apex_account_name,
+        "apex_contract_code": company.apex_contract_code,
         "apex_last_synced_at": company.apex_last_synced_at.isoformat() if company.apex_last_synced_at else None,
     }
 
@@ -168,6 +170,44 @@ def sync_apex_jobs(client_id):
         raise NotFoundError("Client company not found")
     summary = apex_sync_service.sync_client(company)
     return jsonify(summary)
+
+
+@staff_bp.put("/clients/<int:client_id>/apex-contract-code")
+@login_required
+@require_role(UserRole.WGTK_ADMIN)
+def set_apex_contract_code(client_id):
+    company = db.session.get(ClientCompany, client_id)
+    if not company:
+        raise NotFoundError("Client company not found")
+    payload = request.get_json(silent=True) or {}
+    company.apex_contract_code = (payload.get("apex_contract_code") or "").strip() or None
+    db.session.commit()
+    return jsonify(serialize_client(company))
+
+
+@staff_bp.get("/clients/<int:client_id>/apex-pending-ans-jobs")
+@login_required
+@require_wgtk
+def list_apex_pending_ans_jobs(client_id):
+    company = db.session.get(ClientCompany, client_id)
+    if not company:
+        raise NotFoundError("Client company not found")
+    return jsonify(apex_sync_service.list_pending_ans_jobs(company))
+
+
+@staff_bp.post("/clients/<int:client_id>/apex-accept-ans-job")
+@login_required
+@require_wgtk
+def accept_apex_ans_job(client_id):
+    company = db.session.get(ClientCompany, client_id)
+    if not company:
+        raise NotFoundError("Client company not found")
+    payload = request.get_json(silent=True) or {}
+    raw_message_text = payload.get("raw_message_text")
+    if not raw_message_text:
+        raise ValidationError("raw_message_text is required")
+    enquiry = apex_sync_service.accept_ans_job(company, raw_message_text)
+    return jsonify(serialize_enquiry(enquiry)), 201
 
 
 @staff_bp.get("/users")

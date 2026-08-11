@@ -47,30 +47,22 @@ def _get_credentials():
 _LOCK_RETRY_DELAY_SECONDS = 3
 
 
-def _call(operation, extra_fields=None):
-    """`extra_fields` is an ordered dict of {field_name: value} beyond
-    apiLogin/apiPassword, in the exact order the WSDL declares them.
-
-    Retries once on Apex's "Job is currently locked" fault (a normal,
-    transient condition when a job is open for editing in Apex's own UI
-    at the same moment - not a real failure worth giving up on immediately)."""
+def _post_envelope(envelope, operation):
+    """Posts a fully-built SOAP envelope and returns the parsed response
+    root. Retries once on Apex's "Job is currently locked" fault (a normal,
+    transient condition when a job is open for editing in Apex's own UI at
+    the same moment - not a real failure worth giving up on immediately)."""
     try:
-        return _call_once(operation, extra_fields)
+        return _post_envelope_once(envelope, operation)
     except ApiError as exc:
         if "currently locked" not in exc.message.lower():
             raise
         time.sleep(_LOCK_RETRY_DELAY_SECONDS)
-        return _call_once(operation, extra_fields)
+        return _post_envelope_once(envelope, operation)
 
 
-def _call_once(operation, extra_fields=None):
-    base_url, username, password = _get_credentials()
-
-    fields = {"apiLogin": username, "apiPassword": password}
-    fields.update(extra_fields or {})
-    field_xml = "\n".join(f"      <{key}>{escape(str(value))}</{key}>" for key, value in fields.items())
-
-    envelope = _SOAP_ENVELOPE.format(ns_soap=NS_SOAP, ns_api=NS_API, operation=operation, fields=field_xml)
+def _post_envelope_once(envelope, operation):
+    base_url, _, _ = _get_credentials()
 
     try:
         response = requests.post(
@@ -103,6 +95,43 @@ def _call_once(operation, extra_fields=None):
         raise ApiError(f"Apex RMS returned HTTP {response.status_code}", status_code=502)
 
     return root
+
+
+def _field_xml(fields):
+    """Renders a flat {name: value} dict as body elements. A value of
+    `Nil` renders as an explicit xsi:nil element (needed for the several
+    RecoveryJobDetails fields that are required-but-nillable per the WSDL -
+    the element must be present even with no value)."""
+    parts = []
+    for key, value in fields.items():
+        if value is Nil:
+            parts.append(f'      <{key} xsi:nil="true" />')
+        elif value is None:
+            continue
+        else:
+            parts.append(f"      <{key}>{escape(str(value))}</{key}>")
+    return "\n".join(parts)
+
+
+class _NilType:
+    """Sentinel distinguishing "send this field as an explicit SOAP nil"
+    from "omit this field" (plain None)."""
+
+    def __repr__(self):
+        return "Nil"
+
+
+Nil = _NilType()
+
+
+def _call(operation, extra_fields=None):
+    """`extra_fields` is an ordered dict of {field_name: value} beyond
+    apiLogin/apiPassword, in the exact order the WSDL declares them."""
+    _, username, password = _get_credentials()
+    fields = {"apiLogin": username, "apiPassword": password}
+    fields.update(extra_fields or {})
+    envelope = _SOAP_ENVELOPE.format(ns_soap=NS_SOAP, ns_api=NS_API, operation=operation, fields=_field_xml(fields))
+    return _post_envelope(envelope, operation)
 
 
 def _strip_ns(tag):
@@ -150,3 +179,78 @@ def add_job_history_entry(job_id, audit_text, job_type="RecoveryJob"):
     root = _call("AddJobHistoryEntry", {"jobId": job_id, "jobType": job_type, "auditText": audit_text})
     result_elem = root.find(f".//{{{NS_API}}}AddJobHistoryEntryResult")
     return (result_elem.text or "").strip().lower() == "true" if result_elem is not None else False
+
+
+def list_ans_messages_waiting_acceptance():
+    """GetAnsJobMessagesWaitingAcceptance - confirmed via the WSDL to use
+    `apiPwd` rather than `apiPassword` like every other operation, a real
+    inconsistency in Apex's own API. Returns raw {FromAnsNodeId,
+    ToAnsNodeId, MessageText} dicts for ALL pending messages across every
+    account WGTK receives ANS jobs from - callers filter by whatever they
+    can parse out of MessageText (there's no account-name field here)."""
+    _, username, password = _get_credentials()
+    fields = {"apiLogin": username, "apiPwd": password}
+    envelope = _SOAP_ENVELOPE.format(
+        ns_soap=NS_SOAP, ns_api=NS_API, operation="GetAnsJobMessagesWaitingAcceptance", fields=_field_xml(fields)
+    )
+    root = _post_envelope(envelope, "GetAnsJobMessagesWaitingAcceptance")
+    return [_leaf_children_to_dict(el) for el in root.iter(f"{{{NS_API}}}AnsJobMessage")]
+
+
+# RecoveryJobDetails fields per Apex's integration guide + WSDL. JobStatus
+# is required and must be a real JobStatuses enum value (not nillable).
+# JobDateTime/ETA/the four GPS fields are required-but-nillable - the
+# element must be present even with no value, hence the Nil sentinel.
+_RECOVERY_JOB_DETAIL_FIELDS = [
+    "JobOrderNo", "JobOrderNo2", "JobSalesAccName", "JobStatus", "Symptom", "FaultCode",
+    "JobDateTime", "ETA", "JobLocationCode", "JobLocationDesc",
+    "JobDestinationGpsLat", "JobDestinationGpsLng", "JobDestinationCode", "JobDestinationDesc",
+    "JobRamNotes", "JobPlannedDriver", "JobOnHold", "JobAuthCode", "JobPdaNotes",
+    "JobLocationGpsLat", "JobLocationGpsLng", "JobContractCode", "JobEdiJobNo", "JobSiteCode",
+    "JobVehicleClass", "JobPriorityFlag", "JobPriorityReason", "JobPriorityDetail", "JobInvoiceNotes",
+    "JobVehicleMake", "JobVehicleModel", "JobVehicleRegistration", "JobVehicleColour",
+    "JobVehicleFuelType", "JobVehicleEngineDetails", "JobVehicleWeight", "JobLength", "JobTowingTrailer",
+    "JobOwnerName", "JobOwnerCompany", "JobOwnerAddress", "JobOwnerMemberNo", "JobOwnerPhone",
+    "JobOwnerEmail", "JobPassengerAdult", "JobPassengerChild", "JobVehicleFleetNo", "JobVehicleVin",
+]
+# JobVehicleMakeModel is deliberately excluded - the doc says "leave null"
+# on create, and JobServices likewise ("leave null").
+
+
+def create_recovery_job(details):
+    """CreateRecoveryJob - creates a permanent job record in Apex's live
+    system. `details` is a dict using the RecoveryJobDetails field names
+    above; any field not in _RECOVERY_JOB_DETAIL_FIELDS is ignored. Missing
+    fields are omitted except the handful that are required-but-nillable
+    (sent as explicit nil automatically) and JobStatus (required, defaults
+    to "Unallocated" - a brand new job hasn't been allocated to anyone yet).
+    Returns the new Apex JobId."""
+    nillable_if_missing = {
+        "JobDateTime", "ETA", "JobDestinationGpsLat", "JobDestinationGpsLng",
+        "JobLocationGpsLat", "JobLocationGpsLng",
+    }
+    job_detail_fields = {}
+    for key in _RECOVERY_JOB_DETAIL_FIELDS:
+        if key in details:
+            job_detail_fields[key] = details[key]
+        elif key in nillable_if_missing:
+            job_detail_fields[key] = Nil
+        elif key == "JobStatus":
+            job_detail_fields[key] = "Unallocated"
+
+    _, username, password = _get_credentials()
+    fields = {"apiLogin": username, "apiPassword": password}
+    # xsi is already declared on the root soap:Envelope element (see
+    # _SOAP_ENVELOPE), so nested elements can use the xsi: prefix directly.
+    field_xml_parts = [_field_xml(fields)]
+    field_xml_parts.append("      <recJobDetail>")
+    field_xml_parts.append(_field_xml(job_detail_fields))
+    field_xml_parts.append("      </recJobDetail>")
+    envelope = _SOAP_ENVELOPE.format(
+        ns_soap=NS_SOAP, ns_api=NS_API, operation="CreateRecoveryJob", fields="\n".join(field_xml_parts)
+    )
+    root = _post_envelope(envelope, "CreateRecoveryJob")
+    result_elem = root.find(f".//{{{NS_API}}}CreateRecoveryJobResult")
+    if result_elem is None or not result_elem.text:
+        raise ApiError("Apex RMS did not return a JobId for the new job", status_code=502)
+    return int(result_elem.text)

@@ -30,7 +30,7 @@ from app.extensions import db
 from app.models.enquiry import Enquiry
 from app.models.job import JobNote, NoteVisibility
 from app.models.user import User, UserRole
-from app.services import apex_service, enquiry_service
+from app.services import apex_ans_service, apex_service, enquiry_service
 from app.utils.errors import ValidationError
 
 MIN_SECONDS_BETWEEN_SYNCS = 35
@@ -220,3 +220,50 @@ def sync_client(client_company):
         "skipped_rate_limit": skipped_rate_limit,
         "errors": errors,
     }
+
+
+def list_pending_ans_jobs(client_company):
+    """Jobs Egertons has sent that are still sitting in Apex's ANS
+    "waiting acceptance" queue - not yet real Apex jobs, so they don't
+    appear in GetRecoveryJobsList/the normal sync at all. Matched to this
+    client via the ANS Contract Code (field 1001) parsed out of the raw
+    message, since GetAnsJobMessagesWaitingAcceptance doesn't return an
+    account name directly."""
+    if not client_company.apex_contract_code:
+        return []
+    pending = []
+    for message in apex_service.list_ans_messages_waiting_acceptance():
+        fields = apex_ans_service.parse_ans_message(message.get("MessageText"))
+        if apex_ans_service.single_value(fields, "1001") != client_company.apex_contract_code:
+            continue
+        pending.append({
+            "raw_message_text": message.get("MessageText"),
+            **apex_ans_service.summarize(fields),
+        })
+    return pending
+
+
+def accept_ans_job(client_company, raw_message_text):
+    """Converts a pending ANS message into a real Apex job (CreateRecoveryJob)
+    and immediately creates the corresponding Enquiry here - the API
+    equivalent of clicking Accept in Apex's own UI, so no manual step
+    there is needed. CreateRecoveryJob writes a permanent record to Apex's
+    live system, so this re-validates the contract code match rather than
+    trusting whatever the caller passed in."""
+    admin_user = _find_admin_user(client_company.id)
+    if not admin_user:
+        raise ValidationError("This client has no active admin user to attribute the job to")
+
+    fields = apex_ans_service.parse_ans_message(raw_message_text)
+    if apex_ans_service.single_value(fields, "1001") != client_company.apex_contract_code:
+        raise ValidationError("This message's contract code doesn't match this client")
+
+    job_detail_fields = apex_ans_service.build_recovery_job_details(fields, client_company.apex_account_name)
+    new_job_id = apex_service.create_recovery_job(job_detail_fields)
+
+    # Re-fetch the canonical record from Apex rather than trusting our own
+    # parsed values, and reuse the exact same creation path a normal sync
+    # uses - so this enquiry looks identical to one picked up organically.
+    details = apex_service.get_job_details(new_job_id)
+    synthetic_job = {"JobId": new_job_id, "JobOrderNo": details.get("JobOrderNo"), "LastModifiedDate": None}
+    return _create_new(admin_user, client_company.id, synthetic_job, details)

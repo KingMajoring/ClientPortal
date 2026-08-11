@@ -128,8 +128,12 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
   const [serviceTypeNames, setServiceTypeNames] = useState(client.service_types.map((s) => s.name).join(", "));
   const [fields, setFields] = useState(client.form_fields.map(toEditableField));
   const [apexAccountName, setApexAccountName] = useState(client.apex_account_name || "");
+  const [apexContractCode, setApexContractCode] = useState(client.apex_contract_code || "");
   const [syncSummary, setSyncSummary] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [pendingAnsJobs, setPendingAnsJobs] = useState([]);
+  const [checkingAns, setCheckingAns] = useState(false);
+  const [acceptingJobNumber, setAcceptingJobNumber] = useState(null);
   const [savedMessage, setSavedMessage] = useState(null);
   const [error, setError] = useState(null);
 
@@ -206,6 +210,46 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
       setError(err.message);
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function saveApexContractCode() {
+    setError(null);
+    try {
+      await onSavedWrap(
+        api.put(`/staff/clients/${client.id}/apex-contract-code`, { apex_contract_code: apexContractCode })
+      );
+      setSavedMessage("Apex contract code saved.");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function checkPendingAnsJobs() {
+    setError(null);
+    setCheckingAns(true);
+    try {
+      const jobs = await api.get(`/staff/clients/${client.id}/apex-pending-ans-jobs`);
+      setPendingAnsJobs(jobs);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCheckingAns(false);
+    }
+  }
+
+  async function acceptAnsJob(job) {
+    setError(null);
+    setAcceptingJobNumber(job.job_number);
+    try {
+      await api.post(`/staff/clients/${client.id}/apex-accept-ans-job`, { raw_message_text: job.raw_message_text });
+      setPendingAnsJobs((prev) => prev.filter((j) => j.raw_message_text !== job.raw_message_text));
+      setSavedMessage(`Accepted ${job.job_number} - created in Apex and synced here.`);
+      await onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAcceptingJobNumber(null);
     }
   }
 
@@ -376,6 +420,52 @@ function ClientConfigPanel({ client, onSaved, onClose }) {
           )}
         </div>
       )}
+
+      <h4 className="section-title" style={{ marginTop: "1.5rem" }}>Pending ANS jobs</h4>
+      <p style={{ color: "var(--text-secondary)", fontSize: "0.82rem", marginTop: "-0.5rem" }}>
+        Jobs sent but not yet accepted in Apex - these don't appear in the normal sync until accepted. The
+        Contract Code below is how a pending message is matched to this client (it's the "1001" field on the
+        message, e.g. Egertons' jobs all use "RMSEGE").
+      </p>
+      <div className="action-row">
+        <input
+          placeholder="Apex Contract Code (e.g. RMSEGE)"
+          style={{ flex: 1 }}
+          value={apexContractCode}
+          onChange={(e) => setApexContractCode(e.target.value)}
+        />
+        <button className="btn-secondary" onClick={saveApexContractCode}>Save contract code</button>
+        <button onClick={checkPendingAnsJobs} disabled={checkingAns || !client.apex_contract_code}>
+          {checkingAns ? "Checking..." : "Check for new jobs"}
+        </button>
+      </div>
+
+      {pendingAnsJobs.length === 0 && (
+        <p style={{ color: "var(--text-tertiary)", fontSize: "0.85rem" }}>
+          No pending jobs found (or haven't checked yet).
+        </p>
+      )}
+      {pendingAnsJobs.map((job) => (
+        <div
+          key={job.raw_message_text}
+          className="action-row"
+          style={{ background: "#FAFAFC", padding: "0.6rem", borderRadius: "var(--radius-sm)", alignItems: "flex-start" }}
+        >
+          <div style={{ flex: 1, fontSize: "0.85rem" }}>
+            <strong>{job.job_number}</strong> {job.priority && <span className="badge badge-red">Priority</span>}
+            <br />
+            {job.vehicle_registration} {job.vehicle_make} {job.vehicle_model}
+            <br />
+            {job.owner_name} &middot; {job.owner_phone}
+            <br />
+            {job.location}
+            {job.symptom && <><br />Symptom: {job.symptom}</>}
+          </div>
+          <button onClick={() => acceptAnsJob(job)} disabled={acceptingJobNumber === job.job_number}>
+            {acceptingJobNumber === job.job_number ? "Accepting..." : "Accept & create in Apex"}
+          </button>
+        </div>
+      ))}
     </section>
   );
 }
